@@ -1,1 +1,2 @@
 deploy-certscan-docker*.sh
+*.log
