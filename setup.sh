@@ -55,8 +55,7 @@ prereq_is_installed "lazydocker" || {
   wget -qO- "https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh" \
   | sed 's|$HOME/.local/bin|/usr/local/bin|' \
   | sudo bash &>/dev/null
-}
-
+} &&
 mkdir -p $HOME/.config/lazydocker && cat > $HOME/.config/lazydocker/config.yml <<EO1
 # https://github.com/jesseduffield/lazydocker/blob/master/docs/Config.md
 logs:
@@ -104,17 +103,6 @@ prereq_is_installed "aws" && echo "aws" || echo "no aws" #TODO debug
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
-# read -p "Enter aws_access_key_id     :" -s aws_access_key_id
-# echo
-# read -p "Enter aws_secret_access_key :" -s aws_secret_access_key
-
-# aws sts get-caller-identity
-# {
-#   "UserId":"985141293874",
-#   "Account":"985141293874",
-#   "Arn":"arn:marketplacewebservice:iam::985141293874:root"
-# }
-
 whiptail \
     --title "AWS: Sign in as IAM user" \
     --yesno "                        Would you like to provide AWS IAM credetials now?" \
@@ -132,12 +120,14 @@ while true ; do
     --fb 10 100 3>&1 1>&2 2>&3
   ) && 
   aws sts get-caller-identity && {
-    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}          && \
-    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}  && \
-    aws configure set region "us-east-2"                              && \
-    aws configure set output "json"                                   && \
-    aws ecr get-login-password --region us-east-2 |                   \
-    docker login --username AWS --password-stdin 585953033457.dkr.ecr.us-east-2.amazonaws.com
+    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}          &&
+    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}  &&
+    aws configure set region "us-east-2"                              &&
+    aws configure set output "json"                                   &&
+    aws ecr get-login-password --region $(aws configure get region) | \
+    docker login                                                      \
+    --username AWS                                                    \
+    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com
   } && break
   whiptail \
     --clear \
@@ -150,4 +140,3 @@ done
 
 wget -qO- https://raw.githubusercontent.com/antillgrp/auto-docker-deploy/main/deploy-certscan-docker-1.0.0.sh.aes | \
 openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k "solutions@123" > deploy-certscan-docker.sh
-setup
