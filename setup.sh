@@ -133,7 +133,7 @@ while true ; do
   aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials          &&
   echo -n "[default]                                                                \n\
   region="us-east-2"                                                                \n\
-  output=json" > $HOME/.aws/credentials                                              &&
+  output=json" > $HOME/.aws/config                                                   &&
   {
     aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}                        &&
     aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                &&
