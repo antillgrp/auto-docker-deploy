@@ -126,7 +126,15 @@ while true ; do
     --inputbox "                        Enter aws secret access key:" \
     --fb 10 100 3>&1 1>&2 2>&3
   ) && 
-  aws sts get-caller-identity 2>&1 >> setup.log && {
+  aws sts get-caller-identity 2>&1 >> setup.log                                     &&
+  mkdir -p $HOME/.aws                                                               &&
+  echo -n "[default]                                                                \n\
+  aws_access_key_id=${AWS_ACCESS_KEY_ID}                                            \n\
+  aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials          &&
+  echo -n "[default]                                                                \n\
+  region="us-east-2"                                                                \n\
+  output=json" > $HOME/.aws/credentials                                              &&
+  {
     aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}                        &&
     aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                &&
     aws configure set region "us-east-2"                                            &&
