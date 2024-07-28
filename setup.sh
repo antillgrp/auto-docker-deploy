@@ -31,6 +31,9 @@ grep -qi "uninstall_prereqs" /etc/profile || cat <<EOF >> /etc/profile
 $(declare -f uninstall_prereqs)
 EOF
 
+# $$ = the PID of the running script instance
+STDOUT=`readlink -f /proc/$$/fd/1`
+STDERR=`readlink -f /proc/$$/fd/2`
 exec > setup.log 2>&1
 
 apt-get -qq update &>/dev/null && apt-get -qq upgrade -y &>/dev/null && echo update
@@ -103,6 +106,8 @@ prereq_is_installed "aws" && echo "aws" || echo "no aws" #TODO debug
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
+exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+
 whiptail \
     --title "AWS: Sign in as IAM user" \
     --yesno "                        Would you like to provide AWS IAM credetials now?" \
@@ -119,16 +124,17 @@ while true ; do
     --inputbox "                        Enter aws secret access key:" \
     --fb 10 100 3>&1 1>&2 2>&3
   ) && 
-  aws sts get-caller-identity && {
-    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}          &&
-    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}  &&
-    aws configure set region "us-east-2"                              &&
-    aws configure set output "json"                                   &&
-    aws ecr get-login-password --region $(aws configure get region) | \
-    docker login                                                      \
-    --username AWS                                                    \
-    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com
-  } && break
+  aws sts get-caller-identity 2>&1 >> setup.log && {
+    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}                        &&
+    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                &&
+    aws configure set region "us-east-2"                                            &&
+    aws configure set output "json"                                                 &&
+    aws ecr get-login-password --region $(aws configure get region) |               \
+    docker login                                                                    \
+    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com \
+    --username AWS 2>&1 >> setup.log                                                && 
+    break
+  } 2>&1 >> setup.log 
   whiptail \
     --clear \
     --title "AWS: Sign in as IAM user" \
@@ -138,5 +144,65 @@ done
 
 ####################################################################################################################
 
-wget -qO- https://raw.githubusercontent.com/antillgrp/auto-docker-deploy/main/deploy-certscan-docker-1.0.0.sh.aes | \
-openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k "solutions@123" > deploy-certscan-docker.sh
+GITHUB_LATEST_VERSION=$(
+  curl -L -s -H 'Accept: application/json' https://github.com/antillgrp/auto-docker-deploy/releases/latest | \
+  sed -e 's/.*"tag_name":"\([^"]*\)".*/\1/'
+)                                                                                                                      &&
+GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                               &&
+GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
+while true ; do
+  encrypt_pass=$(whiptail                                                                                              \
+      --title "$GITHUB_FILE unencryption"                                                                              \
+      --passwordbox "\n             Please, enter unencryption password:"                                              \
+      --fb 10 70 3>&1 1>&2 2>&3)                                                                                       && 
+  wget -qO- $GITHUB_URL |                                                                                              \
+  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${encrypt_pass} >                                               \
+  "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> setup.log                                               &&
+  chmod +x "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                    &&
+  echo "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh succefuly downloaded and made executable" >> setup.log  && 
+  break                                                                                                                ||
+  whiptail                                                                                                             \
+    --clear                                                                                                            \
+    --title "$GITHUB_FILE unencryption"                                                                                \
+    --yesno "Error: $GITHUB_FILE could not be decrypted with the provided password. Try again?"                        \
+    --fb 10 110 3>&1 1>&2 2>&3 || break # $(stty size)
+done
+
+####################################################################################################################
+
+cat > sbom.conf <<EO3
+tennant=oman
+cs-version=4.3.3
+domain=wajajah.certscan.rop.gov.internal
+rel-kit-path=Releases/4.3.3/Certscan Release Kit 4.3.3 Oman_Hotfix_SOL-27093_ July 8th 2024.zip
+[third-party]
+postgres=postgres:12-alpine
+pgweb=sosedoff/pgweb
+redis=redis:7.2.4-alpine
+rabbitmq=rabbitmq:3.13.0-management-alpine
+[certscan]
+flyway=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.3.3-release-20240502
+csview=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/core:4.3.3-release-20240628-Hotfix
+workflow=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowdesginerservice:4.3.3-release-20240502
+cchelp=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/cchelp:4.3.3-release-20240502
+configserver=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/configservice:4.3.3-release-20240502
+assignmentservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/assignmentservice:4.3.3-release-20240502
+converter=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/imageprocessor:4.3.3-release-20240502
+event=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/eventalarms:4.3.3-release-20240502
+workflowengine=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowengine:4.3.3-release-20240502
+appconfiguration=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/applicationconfiguration:4.3.3-release-20240502
+discoveryservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/discoveryservice:4.3.3-release-20240502
+usermanagement=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/usermanagement:4.3.3-release-20240502
+certscanjobs=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/certscan-db-jobs:4.3.3-release-20240502
+haproxy=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/haproxy:4.3.3-release-20240502
+#irservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/irservice:4.3.4-release-20240607
+[cis]
+#cis-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/api:dev-4.5.1.288
+cis-cert-path=cis-4/cis_api_certs_2024.zip
+cis-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/ui:dev-4.5.1.273
+cis-ps=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/ps:dev-4.5.1.288
+[emulator]
+#emu-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/api:dev-1.6.0.16
+emu-scans-path=cis-emulator/cs-cis-demo.zip
+emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
+EO3
