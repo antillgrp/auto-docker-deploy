@@ -128,10 +128,10 @@ while true ; do
   ) && 
   aws sts get-caller-identity 2>&1 >> setup.log                                     &&
   mkdir -p $HOME/.aws                                                               &&
-  echo -n "[default]                                                                \n\
+  echo -e "[default]                                                                \n\
   aws_access_key_id=${AWS_ACCESS_KEY_ID}                                            \n\
   aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials          &&
-  echo -n "[default]                                                                \n\
+  echo -e "[default]                                                                \n\
   region="us-east-2"                                                                \n\
   output=json" > $HOME/.aws/config                                                   &&
   {
