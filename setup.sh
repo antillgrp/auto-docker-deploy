@@ -139,7 +139,8 @@ while true ; do
     aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                &&
     aws configure set region "us-east-2"                                            &&
     aws configure set output "json"                                                 &&
-    aws ecr get-login-password --region $(aws configure get region) |               \
+    aws ecr get-login-password --profile default                                    \
+    --region $(aws configure get region) |                                          \
     docker login                                                                    \
     --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com \
     --username AWS 2>&1 >> setup.log                                                && 
