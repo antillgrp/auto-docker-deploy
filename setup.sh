@@ -23,7 +23,7 @@ uninstall_prereqs(){
   dpkg --purge code
 }
 
-PATH="${PATH:+${PATH}:}/opt/certscan/bin"
+export PATH="${PATH}:/opt/certscan/bin"
 
 grep -qi "uninstall_prereqs" /etc/profile || cat <<EOF >> /etc/profile
 
@@ -31,7 +31,7 @@ $(declare -f prereq_is_installed)
 
 $(declare -f uninstall_prereqs)
 
-PATH="\${PATH:+\${PATH}:}~/opt/bin"
+export PATH="${PATH}:/opt/certscan/bin"
 
 EOF
 
