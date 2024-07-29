@@ -12,11 +12,6 @@ prereq_is_installed(){
   return 0
 }
 
-grep -qi "prereq_is_installed" /etc/profile || cat <<EOF >> /etc/profile
-
-$(declare -f prereq_is_installed)
-EOF
-
 uninstall_prereqs(){
   #DOCKER
   apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
@@ -28,9 +23,16 @@ uninstall_prereqs(){
   dpkg --purge code
 }
 
+PATH="${PATH:+${PATH}:}~/opt/bin"
+
 grep -qi "uninstall_prereqs" /etc/profile || cat <<EOF >> /etc/profile
 
+$(declare -f prereq_is_installed)
+
 $(declare -f uninstall_prereqs)
+
+PATH="\${PATH:+\${PATH}:}~/opt/bin"
+
 EOF
 
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir
