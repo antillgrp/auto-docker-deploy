@@ -33,13 +33,14 @@ grep -qi "uninstall_prereqs" /etc/profile || cat <<EOF >> /etc/profile
 $(declare -f uninstall_prereqs)
 EOF
 
-bin_dir="/otp/certscan/bin" && mkdir -p $bin_dir
-tmp_dir=$(mktemp -d) && echo $tmp_dir
+bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir
 
 # $$ = the PID of the running script instance
 STDOUT=`readlink -f /proc/$$/fd/1`
 STDERR=`readlink -f /proc/$$/fd/2`
 exec > "$bin_dir/setup.log" 2>&1
+
+tmp_dir=$(mktemp -d) && echo $tmp_dir
 
 apt-get -qq update &>/dev/null && apt-get -qq upgrade -y &>/dev/null && echo update
 
