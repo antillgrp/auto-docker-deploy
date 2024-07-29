@@ -38,9 +38,15 @@ STDOUT=`readlink -f /proc/$$/fd/1`
 STDERR=`readlink -f /proc/$$/fd/2`
 exec > setup.log 2>&1
 
+tmp_dir=$(mktemp -d) && echo $tmp_dir
+
 apt-get -qq update &>/dev/null && apt-get -qq upgrade -y &>/dev/null && echo update
 
-tmp_dir=$(mktemp -d) && echo $tmp_dir
+# TODO remote destop access and chrome
+# apt-get -qq -y install open-vm-tools-desktop xrdp && systemctl status xrdp
+#sudo apt-get install libxss1 libappindicator1 libindicator7
+#wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+#sudo apt install ./google-chrome*.deb
 
 ## -> DOCKER #######################################################################################################
 
