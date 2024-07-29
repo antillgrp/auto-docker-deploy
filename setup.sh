@@ -25,7 +25,7 @@ uninstall_prereqs(){
 
 export PATH="${PATH}:/opt/certscan/bin"
 
-grep -qi "uninstall_prereqs" /etc/profile || cat <<EOF >> /etc/profile
+grep -qi "prereq_is_installed" /etc/profile || cat <<EOF >> /etc/profile
 
 $(declare -f prereq_is_installed)
 
