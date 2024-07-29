@@ -31,7 +31,7 @@ $(declare -f prereq_is_installed)
 
 $(declare -f uninstall_prereqs)
 
-export PATH="${PATH}:/opt/certscan/bin"
+export PATH="${PATH}"
 
 EOF
 
