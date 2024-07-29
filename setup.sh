@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# wget -qO- https://git.new/rfR0pfn | bash
+# wget -qO- https://git.new/hC2Yas2 | bash
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
@@ -33,12 +33,13 @@ grep -qi "uninstall_prereqs" /etc/profile || cat <<EOF >> /etc/profile
 $(declare -f uninstall_prereqs)
 EOF
 
+bin_dir="/otp/certscan/bin" && mkdir -p $bin_dir
+tmp_dir=$(mktemp -d) && echo $tmp_dir
+
 # $$ = the PID of the running script instance
 STDOUT=`readlink -f /proc/$$/fd/1`
 STDERR=`readlink -f /proc/$$/fd/2`
-exec > setup.log 2>&1
-
-tmp_dir=$(mktemp -d) && echo $tmp_dir
+exec > "$bin_dir/setup.log" 2>&1
 
 apt-get -qq update &>/dev/null && apt-get -qq upgrade -y &>/dev/null && echo update
 
@@ -64,8 +65,8 @@ prereq_is_installed "docker" && echo "docker" || echo "no docker"
 
 prereq_is_installed "lazydocker" || {
   wget -qO- "https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh" \
-  | sed 's|$HOME/.local/bin|/usr/local/bin|' \
-  | sudo bash &>/dev/null
+  | sed 's|$HOME/.local/bin|/usr/local/bin|'                                                                    \
+  | bash &>/dev/null
 } &&
 mkdir -p $HOME/.config/lazydocker && cat > $HOME/.config/lazydocker/config.yml <<EO1
 # https://github.com/jesseduffield/lazydocker/blob/master/docs/Config.md
@@ -82,6 +83,7 @@ prereq_is_installed "lazydocker" && echo "lazydocker" || echo "no lazydocker"
 #rm -f /usr/local/bin/lazydocker
 
 ## --> VSCODE ######################################################################################################
+
 code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
 prereq_is_installed "code" || {
   mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
@@ -106,7 +108,7 @@ prereq_is_installed "aws" || {
 }
 
 #TODO debug
-prereq_is_installed "aws" && echo "aws" || echo "no aws" #TODO debug
+prereq_is_installed "aws" && echo "aws" || echo "no aws" 
 
 #Uninstall
 # rm /usr/local/bin/aws && rm /usr/local/bin/aws_completer && rm -rf /usr/local/aws-cli
@@ -132,14 +134,14 @@ while true ; do
     --inputbox "                        Enter aws secret access key:" \
     --fb 10 100 3>&1 1>&2 2>&3
   ) && 
-  aws sts get-caller-identity 2>&1 >> setup.log                                     &&
-  # mkdir -p $HOME/.aws                                                               &&
-  # echo -e "[default]                                                                \n\
-  # aws_access_key_id=${AWS_ACCESS_KEY_ID}                                            \n\
-  # aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials          &&
-  # echo -e "[default]                                                                \n\
-  # region="us-east-2"                                                                \n\
-  # output=json" > $HOME/.aws/config                                                   &&
+  aws sts get-caller-identity 2>&1 >> "$bin_dir/setup.log"                          &&
+  # mkdir -p $HOME/.aws                                                             &&
+  # echo -e "[default]                                                              \n\
+  # aws_access_key_id=${AWS_ACCESS_KEY_ID}                                          \n\
+  # aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials        &&
+  # echo -e "[default]                                                              \n\
+  # region="us-east-2"                                                              \n\
+  # output=json" > $HOME/.aws/config                                                &&
   {
     aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}                        &&
     aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                &&
@@ -149,9 +151,9 @@ while true ; do
     --region $(aws configure get region) |                                          \
     docker login                                                                    \
     --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com \
-    --username AWS 2>&1 >> setup.log                                                && 
+    --username AWS 2>&1 >> "$bin_dir/setup.log"                                     && 
     break
-  } 2>&1 >> setup.log 
+  } 2>&1 >> "$bin_dir/setup.log" 
   whiptail \
     --clear \
     --title "AWS: Sign in as IAM user" \
@@ -162,32 +164,34 @@ done
 ####################################################################################################################
 
 GITHUB_LATEST_VERSION=$(
-  curl -L -s -H 'Accept: application/json' https://github.com/antillgrp/auto-docker-deploy/releases/latest | \
+  curl -L -s -H 'Accept: application/json' https://github.com/antillgrp/auto-docker-deploy/releases/latest |            \
   sed -e 's/.*"tag_name":"\([^"]*\)".*/\1/'
-)                                                                                                                      &&
-GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                               &&
-GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
+)                                                                                                                       &&
+GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                                &&
+#GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
+GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
 while true ; do
-  encrypt_pass=$(whiptail                                                                                              \
-      --title "$GITHUB_FILE unencryption"                                                                              \
-      --passwordbox "\n             Please, enter unencryption password:"                                              \
-      --fb 10 70 3>&1 1>&2 2>&3)                                                                                       && 
-  wget -qO- $GITHUB_URL |                                                                                              \
-  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${encrypt_pass} >                                               \
-  "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> setup.log                                               &&
-  chmod +x "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                    &&
-  echo "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh succefuly downloaded and made executable" >> setup.log  && 
-  break                                                                                                                ||
-  whiptail                                                                                                             \
-    --clear                                                                                                            \
-    --title "$GITHUB_FILE unencryption"                                                                                \
-    --yesno "Error: $GITHUB_FILE could not be decrypted with the provided password. Try again?"                        \
+  encrypt_pass=$(whiptail                                                                                               \
+      --title "$GITHUB_FILE unencryption"                                                                               \
+      --passwordbox "\n             Please, enter unencryption password:"                                               \
+      --fb 10 70 3>&1 1>&2 2>&3)                                                                                        && 
+  wget -qO- $GITHUB_URL |                                                                                               \
+  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${encrypt_pass} >                                                \
+  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                            &&
+  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                            &&
+  echo "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh succefuly downloaded and made executable" >>             \
+  "$bin_dir/setup.log"                                                                                                  && 
+  break                                                                                                                 ||
+  whiptail                                                                                                              \
+    --clear                                                                                                             \
+    --title "$GITHUB_FILE unencryption"                                                                                 \
+    --yesno "Error: $GITHUB_FILE could not be decrypted with the provided password. Try again?"                         \
     --fb 10 110 3>&1 1>&2 2>&3 || break # $(stty size)
 done
 
 ####################################################################################################################
 
-cat > sbom.conf <<EO3
+cat > "$bin_dir/sbom.conf" <<EO3
 tennant=oman
 cs-version=4.3.3
 domain=wajajah.certscan.rop.gov.internal
