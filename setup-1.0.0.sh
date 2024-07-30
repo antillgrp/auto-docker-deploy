@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-# wget -qO- https://git.new/hC2Yas2 | bash
+# wget -qO- https://git.new/hC2Yas2 | sudo bash
+
+VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
