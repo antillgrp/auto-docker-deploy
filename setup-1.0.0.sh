@@ -2,6 +2,8 @@
 
 # wget -qO- https://git.new/hC2Yas2 | sudo bash
 
+# git add . && git commit -m "sync: $(date)" && git push
+
 VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
