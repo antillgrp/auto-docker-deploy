@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# wget -qO- https://git.new/hC2Yas2 | sudo bash
+# wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
 
 # git add . && git commit -m "sync: $(date)" && git push
 
