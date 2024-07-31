@@ -166,8 +166,7 @@ while [[ $REPLY =~ ^[Yy]$ ]] ; do
     --username AWS 2>&1 >> "$bin_dir/setup.log"                                                && 
     break
   } 2>&1 >> "$bin_dir/setup.log" 
-  read -p "[AWS: Sign in as IAM user] The provided ID/KEY pair could not be verified. Try again? (yY/nN)" \
-  -n 1 -r && echo
+  read -p "[AWS: Sign in as IAM user] The provided ID/KEY pair could not be verified. Try again? (yY/nN)" -n 1 -r && echo
 done
 
 ####################################################################################################################
@@ -183,14 +182,13 @@ REPLY=y                                                                         
 while [[ $REPLY =~ ^[Yy]$ ]] ; do
   read -p "[$GITHUB_FILE unencryption] Please, enter unencryption password: " -r                                        &&
   wget -qO- $GITHUB_URL |                                                                                               \
-  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${REPLY} >                                                \
+  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${REPLY} >                                                       \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                            &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                            &&
   echo "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh succefuly downloaded and made executable" >>             \
   "$bin_dir/setup.log"                                                                                                  && 
   break                                                                                                                 ||
-  read -p "[$GITHUB_FILE unencryption] could not be decrypted with the provided password. Try again? (yY/nN)"           \ 
-  -n 1 -r && echo
+  read -p "[$GITHUB_FILE unencryption] could not be decrypted with the provided password. Try again? (yY/nN)" -n 1 -r && echo
 done
 
 ####################################################################################################################
