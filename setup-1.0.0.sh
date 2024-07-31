@@ -128,18 +128,18 @@ exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
 whiptail \
     --title "AWS: Sign in as IAM user" \
     --yesno "                        Would you like to provide AWS IAM credetials now?" \
-    --fb 10 100 3>&1 1>&2 2>&3 && 
+    --fb $(stty size) 3>&1 1>&2 2>&3 && 
 while true ; do
   # https://stackoverflow.com/a/49356580
   export AWS_ACCESS_KEY_ID=$(whiptail                                 \
     --title "AWS: Sign in as IAM user"                                \
     --inputbox "                        \nEnter aws access key id:"   \
-    --fb 10 100 3>&1 1>&2 2>&3
+    --fb $(stty size) 3>&1 1>&2 2>&3
   ) &&
   export AWS_SECRET_ACCESS_KEY=$(whiptail                             \
     --title "AWS: Sign in as IAM user"                                \
     --inputbox "                        Enter aws secret access key:" \
-    --fb 10 100 3>&1 1>&2 2>&3
+    --fb $(stty size) 3>&1 1>&2 2>&3
   ) && 
   aws sts get-caller-identity 2>&1 >> "$bin_dir/setup.log"                          &&
   # mkdir -p $HOME/.aws                                                             &&
@@ -165,7 +165,7 @@ while true ; do
     --clear \
     --title "AWS: Sign in as IAM user" \
     --yesno "               Error: The provided ID/KEY pair could not be verified. Try again?" \
-    --fb 10 100 3>&1 1>&2 2>&3 || break # $(stty size) 
+    --fb $(stty size) 3>&1 1>&2 2>&3 || break # $(stty size) 
 done
 
 ####################################################################################################################
@@ -181,7 +181,7 @@ while true ; do
   encrypt_pass=$(whiptail                                                                                               \
       --title "$GITHUB_FILE unencryption"                                                                               \
       --passwordbox "\n             Please, enter unencryption password:"                                               \
-      --fb 10 70 3>&1 1>&2 2>&3)                                                                                        && 
+      --fb $(stty size) 3>&1 1>&2 2>&3)                                                                                        && 
   wget -qO- $GITHUB_URL |                                                                                               \
   openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${encrypt_pass} >                                                \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                            &&
@@ -193,7 +193,7 @@ while true ; do
     --clear                                                                                                             \
     --title "$GITHUB_FILE unencryption"                                                                                 \
     --yesno "Error: $GITHUB_FILE could not be decrypted with the provided password. Try again?"                         \
-    --fb 10 110 3>&1 1>&2 2>&3 || break # $(stty size)
+    --fb $(stty size) 3>&1 1>&2 2>&3 || break # $(stty size)
 done
 
 ####################################################################################################################
