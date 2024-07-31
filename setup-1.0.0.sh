@@ -139,8 +139,7 @@ exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
 
 #[[ $REPLY =~ ^[Yy]$ ]]                                                                         &&
 
-read -p "[AWS: Sign in as IAM user] Would you like to provide AWS IAM credetials now? (yY/nN)" \
--n 1 -r && echo                                                                                &&
+read -p "[AWS: Sign in as IAM user] Would you like to provide AWS IAM credetials now? (yY/nN)" -n 1 -r && echo                                                                                &&
 while [[ $REPLY =~ ^[Yy]$ ]] ; do
   read -p "[AWS: Sign in as IAM user] Enter aws access key id     :" -r                        && 
   export AWS_ACCESS_KEY_ID=$REPLY                                                              &&
