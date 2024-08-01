@@ -197,13 +197,13 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
   wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  >                           \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                         &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                         &&
-  echo -e "\n😎 deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |           \ 
+  echo -e "\n\033[1;33m😎\033[0m deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |           \ 
   tee -a "$bin_dir/setup.log"                                                                                         &&
-  echo -e "\n😎 To review the log do: \033[1;34mcat $bin_dir/setup.log\033[0m" |                                     \
+  echo -e "\n\033[1;33m😎\033[0m To review the log do: \033[1;34mcat $bin_dir/setup.log\033[0m" |                                     \
   tee -a "$bin_dir/setup.log"                                                                                         &&
   ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                            \
   "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
-  echo -e "\n😎 To start using it do: \033[1;34msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
+  echo -e "\n\033[1;33m😎\033[0m To start using it do: \033[1;34msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
   tee -a "$bin_dir/setup.log"                                                                                         &&
   break
   read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"                        \
@@ -212,7 +212,7 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 done
 
 ####################################################################################################################
-echo -e "\n😎 \033[1;34mA sbom.conf example can be found at: $(pwd)/sbom-<example>.conf\033[0m\n" | \
+echo -e "\n\033[1;33m😎\033[0m \033[1;34mA sbom.conf example can be found at: $(pwd)/sbom-<example>.conf\033[0m\n" | \
 tee -a "$bin_dir/setup.log"                                                     &&
 cat > "sbom-<example>.conf" <<EO3
 tennant=oman
