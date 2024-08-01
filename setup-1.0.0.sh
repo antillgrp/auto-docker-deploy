@@ -194,7 +194,7 @@ echo && echo "[$GITHUB_FILE unencryption]"
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
+  read -p "Please, enter unencryption password: " -r < /dev/tty                                                &&
   wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
@@ -214,7 +214,7 @@ done
 
 ####################################################################################################################
 echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-example.conf\033[0m\n" | \
-tee -a "$bin_dir/setup.log"                                                     &&
+tee -a "$bin_dir/setup.log"                                                                          &&
 cat > "sbom-example.conf" <<EO3
 tennant=oman
 cs-version=4.3.3
