@@ -209,7 +209,6 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 done
 
 ####################################################################################################################
-
 echo -e "\nA sbom.conf example can be found at: $(pwd)/sbom-<example>.conf\n" | \
 tee -a "$bin_dir/setup.log"                                                     &&
 cat > "sbom-<example>.conf" <<EO3
