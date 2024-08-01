@@ -18,13 +18,13 @@ prereq_is_installed(){
 
 uninstall_prereqs(){
   #DOCKER
-  apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
+  sudo apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
   #LAZYDOCKER
-  rm -f /usr/local/bin/lazydocker
+  sudo rm -f /usr/local/bin/lazydocker
   #AWS CLI
-  rm /usr/local/bin/aws && rm /usr/local/bin/aws_completer && rm -rf /usr/local/aws-cli
+  sudo rm -rf /usr/local/bin/aws /usr/local/bin/aws_completer /usr/local/aws-cli
   #VSCODE
-  dpkg --purge code
+  sudo dpkg --purge code
 }
 
 export PATH="${PATH}:/opt/certscan/bin"
@@ -39,24 +39,32 @@ export PATH="${PATH}"
 
 EOF
 
-bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir
-
 # $$ = the PID of the running script instance
 STDOUT=`readlink -f /proc/$$/fd/1`
 STDERR=`readlink -f /proc/$$/fd/2`
-exec > "$bin_dir/setup.log" 2>&1
+#exec > "$bin_dir/setup.log" 2>&1
 
-tmp_dir=$(mktemp -d) && echo $tmp_dir
+echo & echo "[Initialization]"
+bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
+echo "bin dir created: $bin_dir"
 
+tmp_dir=$(mktemp -d)                                && 
+echo "tmp dir created: $tmp_dir"
+
+echo && echo "[PREREQS installation]" && echo
 apt-get -qq update &>/dev/null      && echo update  && 
 apt-get -qq upgrade -y &>/dev/null  && echo upgrade &&
-apt-get -qq install curl -y         && echo curl
+apt-get -qq install curl unzip -y   && echo [] curl installed
 
 # TODO remote destop access and chrome
 # apt-get -qq -y install open-vm-tools-desktop xrdp && systemctl status xrdp
 #sudo apt-get install libxss1 libappindicator1 libindicator7
 #wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 #sudo apt install ./google-chrome*.deb
+
+# exec > "$bin_dir/setup.log" 2>&1
+# uninstall_prereqs 2>&1 >/dev/null
+# exec 1>$STDOUT 2>$STDOUT
 
 ## -> DOCKER #######################################################################################################
 
@@ -65,14 +73,13 @@ prereq_is_installed "docker" || {
 }
 
 exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
-#TODO debug
 prereq_is_installed "docker" && echo "[] docker installed" || echo "[] docker installation failed"
-
-exec > "$bin_dir/setup.log" 2>&1
+#exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
 
+#exit
 ## -> LAZYDOCKER ###################################################################################################
 
 prereq_is_installed "lazydocker" || {
@@ -89,14 +96,13 @@ logs:
 EO1
 
 exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
-#TODO debug
-prereq_is_installed "docker" && echo "[] lazydocker installed" || echo "[] lazydocker installation failed"
-
-exec > "$bin_dir/setup.log" 2>&1
+prereq_is_installed "lazydocker" && echo "[] lazydocker installed" || echo "[] lazydocker installation failed"
+#exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #rm -f /usr/local/bin/lazydocker
 
+#exit
 ## --> VSCODE ######################################################################################################
 
   # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
@@ -116,56 +122,66 @@ exec > "$bin_dir/setup.log" 2>&1
 ## --> AWS_CLI #####################################################################################################
 
 prereq_is_installed "aws" || {
+  #curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "$tmp_dir/awscliv2.zip"
+  #unzip -o -X -qq -d "$tmp_dir" "$tmp_dir/awscliv2.zip" 
+  #$tmp_dir/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
   wget -qO- "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"     |
   busybox unzip -d "$tmp_dir" - 2>&1 > "$tmp_dir/aws-unzip.log"            &&
   chmod -R +x "$tmp_dir/aws"                                               &&
-  "$tmp_dir"/aws/install -i /usr/local/aws-cli -b /usr/local/bin --update  \
+  sudo "$tmp_dir/aws/install"                                              \
+  --bin-dir /usr/local/bin                                                 \
+  --install-dir /usr/local/aws-cli                                         \
+  --update                                                                 \
   2>&1 > "$tmp_dir"/aws-install.log
 }
 
 exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
-#TODO debug
-prereq_is_installed "docker" && echo "[] aws cli installed" || echo "[] aws cli installation failed"
-
-exec > "$bin_dir/setup.log" 2>&1
+prereq_is_installed "aws" && echo "[] aws cli installed" || echo "[] aws cli installation failed"
+#exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 # rm /usr/local/bin/aws && rm /usr/local/bin/aws_completer && rm -rf /usr/local/aws-cli
 
+#exit
+## --> AWS_CLI CONFIGURE ############################################################################################
+
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>$STDOUT 2>$STDERR # https://stackoverflow.com/a/57004149
 
-#[[ $REPLY =~ ^[Yy]$ ]]                                                                         &&
+echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
 
-read -p "[AWS: Sign in as IAM user] Would you like to provide AWS IAM credetials now? (yY/nN)" -n 1 -r && echo                                                                                &&
+  read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
+  if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
+
+done
+
+echo && echo "[AWS: Sign in as IAM user]"
+
 while [[ $REPLY =~ ^[Yy]$ ]] ; do
-  read -p "[AWS: Sign in as IAM user] Enter aws access key id     :" -r                        && 
-  export AWS_ACCESS_KEY_ID=$REPLY                                                              &&
-  read -p "[AWS: Sign in as IAM user] Enter aws secret access key :" -r                        && 
-  export AWS_SECRET_ACCESS_KEY=$REPLY                                                          &&
-  aws sts get-caller-identity 2>&1 >> "$bin_dir/setup.log"                                     &&
-  # mkdir -p $HOME/.aws                                                                        &&
-  # echo -e "[default]                                                                         \n\
-  # aws_access_key_id=${AWS_ACCESS_KEY_ID}                                                     \n\
-  # aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials                   &&
-  # echo -e "[default]                                                                         \n\
-  # region="us-east-2"                                                                         \n\
-  # output=json" > $HOME/.aws/config                                                           &&
-  {
-    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}                                   &&
-    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                           &&
-    aws configure set region "us-east-2"                                                       &&
-    aws configure set output "json"                                                            &&
-    aws ecr get-login-password --profile default                                               \
-    --region $(aws configure get region) |                                                     \
-    docker login                                                                               \
-    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com            \
-    --username AWS 2>&1 >> "$bin_dir/setup.log"                                                && 
-    break
-  } 2>&1 >> "$bin_dir/setup.log" 
-  read -p "[AWS: Sign in as IAM user] The provided ID/KEY pair could not be verified. Try again? (yY/nN)" -n 1 -r && echo
+
+  read -p "Enter aws access key id     :" -r < /dev/tty                            &&
+  AWS_ACCESS_KEY_ID=$REPLY                                                         &&
+  read -p "Enter aws secret access key :" -r < /dev/tty                            &&
+  AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
+  mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
+  aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
+  aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
+  aws sts get-caller-identity &> "$bin_dir/setup.log"                              &&
+  echo && echo "[] aws creds validated"                                            &&
+  aws configure set region "us-east-2"                                             &&
+  aws configure set output "json"                                                  &&
+  aws ecr get-login-password                                                       \
+  --profile default                                                                \
+  --region $(aws configure get region) |                                           \
+  docker login                                                                     \
+  --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
+  --username AWS &> "$bin_dir/setup.log"                                           &&
+  echo "[] docker ecr login verified"                                              && 
+  break
+  read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
+
 done
 
 ####################################################################################################################
@@ -177,18 +193,30 @@ GITHUB_LATEST_VERSION=$(
 GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                                &&
 #GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
 GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
-REPLY=y                                                                                                                 && 
-while [[ $REPLY =~ ^[Yy]$ ]] ; do
-  read -p "[$GITHUB_FILE unencryption] Please, enter unencryption password: " -r                                        &&
-  wget -qO- $GITHUB_URL |                                                                                               \
-  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${REPLY} >                                                       \
-  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                            &&
-  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                            &&
-  echo "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh succefuly downloaded and made executable" >>             \
-  "$bin_dir/setup.log"                                                                                                  && 
-  break                                                                                                                 ||
-  read -p "[$GITHUB_FILE unencryption] could not be decrypted with the provided password. Try again? (yY/nN)" -n 1 -r && echo
+
+echo && echo "[$GITHUB_FILE unencryption]"
+
+REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
+
+  read -p "Please, enter unencryption password: " -r < /dev/tty                                     &&
+  wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  >               \
+  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"              &&
+  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                             &&
+  echo -e "\ndeploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |  \
+  tee -a "$bin_dir/setup.log"                                                                            &&
+  echo -e "\nTo review the log do: cat $bin_dir/setup.log" |                                             \
+  tee -a "$bin_dir/setup.log"                                                                            &&
+  ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                \
+  "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                &&
+  echo -e "\nTo start using it do: deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" |             \
+  tee -a "$bin_dir/setup.log"                                                                            &&
+  break
+  read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"           \
+  -n 1 -r < /dev/tty && echo
+
 done
+
+echo
 
 ####################################################################################################################
 
@@ -228,3 +256,5 @@ cis-ps=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/ps:dev-4.5.1.28
 emu-scans-path=cis-emulator/cs-cis-demo.zip
 emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
 EO3
+
+###################################################################################################################
