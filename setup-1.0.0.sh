@@ -42,8 +42,9 @@ STDERR=`readlink -f /proc/$$/fd/2`
 
 GOOD="\033[1;32m☑\033[0m"
 FAIL="\033[1;31m☒\033[0m"
+COOL="\033[1;33m😎\033[0m"
 
-echo & echo "[Initialization]"
+echo && echo "[Initialization]" && echo
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
 echo -e "$GOOD bin dir created: $bin_dir"
 
@@ -193,28 +194,28 @@ echo && echo "[$GITHUB_FILE unencryption]"
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty                                                      &&
-  wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  >                           \
-  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                         &&
-  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                         &&
-  echo -e "\n\033[1;33m😎\033[0m deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |           \ 
-  tee -a "$bin_dir/setup.log"                                                                                         &&
-  echo -e "\n\033[1;33m😎\033[0m To review the log do: \033[1;34mcat $bin_dir/setup.log\033[0m" |                                     \
-  tee -a "$bin_dir/setup.log"                                                                                         &&
-  ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                            \
-  "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
-  echo -e "\n\033[1;33m😎\033[0m To start using it do: \033[1;34msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
-  tee -a "$bin_dir/setup.log"                                                                                         &&
+  read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
+  wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
+  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
+  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
+  echo -e "\n$COOL deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |            \
+  tee -a "$bin_dir/setup.log"                                                                                            &&
+  echo -e "\n$COOL To review the log do: \033[1;33mcat $bin_dir/setup.log\033[0m" |                                      \
+  tee -a "$bin_dir/setup.log"                                                                                            &&
+  ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                               \
+  "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                &&
+  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
+  tee -a "$bin_dir/setup.log"                                                                                            &&
   break
-  read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"                        \
+  read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"                           \
   -n 1 -r < /dev/tty && echo
 
 done
 
 ####################################################################################################################
-echo -e "\n\033[1;33m😎\033[0m \033[1;34mA sbom.conf example can be found at: $(pwd)/sbom-<example>.conf\033[0m\n" | \
+echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-<example>.conf\033[0m\n" | \
 tee -a "$bin_dir/setup.log"                                                     &&
-cat > "sbom-<example>.conf" <<EO3
+cat > "sbom-example.conf" <<EO3
 tennant=oman
 cs-version=4.3.3
 domain=wajajah.certscan.rop.gov.internal
