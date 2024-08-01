@@ -53,6 +53,7 @@ echo -e "$GOOD tmp dir created: $tmp_dir"
 uninstall_prereqs &>>/dev/null
 
 echo && echo "[PREREQS installation]" && echo
+
 apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
 apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
 apt-get -qq install curl unzip -y   && echo -e "$GOOD curl installed"
@@ -162,7 +163,7 @@ while [[ $REPLY =~ ^[Yy]$ ]] ; do
   mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
   aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
   aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
-  aws sts get-caller-identity &> "$bin_dir/setup.log"                              &&
+  aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
   echo && echo -e "$GOOD aws creds validated"                                      &&
   aws configure set region "us-east-2"                                             &&
   aws configure set output "json"                                                  &&
@@ -171,7 +172,7 @@ while [[ $REPLY =~ ^[Yy]$ ]] ; do
   --region $(aws configure get region) |                                           \
   docker login                                                                     \
   --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
-  --username AWS &> "$bin_dir/setup.log"                                           &&
+  --username AWS &>> "$bin_dir/setup.log"                                           &&
   echo -e "$GOOD docker ecr login verified"                                        && 
   break
   read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
@@ -198,11 +199,11 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                             &&
   echo -e "\n$GOOD deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |  \
   tee -a "$bin_dir/setup.log"                                                                            &&
-  echo -e "\nTo review the log do: cat $bin_dir/setup.log" |                                             \
+  echo -e "\nTo review the log do: \033[1;34mcat $bin_dir/setup.log\033[0m" |                                             \
   tee -a "$bin_dir/setup.log"                                                                            &&
   ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                \
   "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                &&
-  echo -e "\nTo start using it do: deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" |             \
+  echo -e "\nTo start using it do: \033[1;34msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" |             \
   tee -a "$bin_dir/setup.log"                                                                            &&
   break
   read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"           \
