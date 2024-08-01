@@ -50,6 +50,8 @@ echo -e "$GOOD bin dir created: $bin_dir"
 tmp_dir=$(mktemp -d)                                && 
 echo -e "$GOOD tmp dir created: $tmp_dir"
 
+uninstall_prereqs
+
 echo && echo "[PREREQS installation]" && echo
 apt-get -qq update &>/dev/null      && echo update  && 
 apt-get -qq upgrade -y &>/dev/null  && echo upgrade &&
