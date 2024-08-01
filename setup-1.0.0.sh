@@ -50,11 +50,11 @@ echo -e "$GOOD bin dir created: $bin_dir"
 tmp_dir=$(mktemp -d)                                && 
 echo -e "$GOOD tmp dir created: $tmp_dir"
 
-uninstall_prereqs
+uninstall_prereqs &>>/dev/null
 
 echo && echo "[PREREQS installation]" && echo
-apt-get -qq update &>/dev/null      && echo update  && 
-apt-get -qq upgrade -y &>/dev/null  && echo upgrade &&
+apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
+apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
 apt-get -qq install curl unzip -y   && echo -e "$GOOD curl installed"
 
 # TODO remote destop access and chrome
