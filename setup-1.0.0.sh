@@ -213,7 +213,7 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 done
 
 ####################################################################################################################
-echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-<example>.conf\033[0m\n" | \
+echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-example.conf\033[0m\n" | \
 tee -a "$bin_dir/setup.log"                                                     &&
 cat > "sbom-example.conf" <<EO3
 tennant=oman
