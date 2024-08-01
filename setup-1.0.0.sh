@@ -8,7 +8,7 @@ VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/mast
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
-test $? -eq 0 || exit 1 "you should have sudo privilege to run this script"
+test $? -eq 0 || exit 1 "you should have sudo/root  privilege to run this script"
 
 prereq_is_installed(){
   [[ -z $(which $1) ]] && return 1
@@ -27,15 +27,11 @@ uninstall_prereqs(){
   sudo dpkg --purge code
 }
 
-export PATH="${PATH}:/opt/certscan/bin"
-
 grep -qi "prereq_is_installed" /etc/profile || cat <<EOF >> /etc/profile
 
 $(declare -f prereq_is_installed)
 
 $(declare -f uninstall_prereqs)
-
-export PATH="${PATH}"
 
 EOF
 
@@ -44,17 +40,20 @@ STDOUT=`readlink -f /proc/$$/fd/1`
 STDERR=`readlink -f /proc/$$/fd/2`
 #exec > "$bin_dir/setup.log" 2>&1
 
+GOOD="\033[1;32m☑\033[0m"
+FAIL="\033[1;31m☒\033[0m"
+
 echo & echo "[Initialization]"
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
-echo "bin dir created: $bin_dir"
+echo -e "$GOOD bin dir created: $bin_dir"
 
 tmp_dir=$(mktemp -d)                                && 
-echo "tmp dir created: $tmp_dir"
+echo -e "$GOOD tmp dir created: $tmp_dir"
 
 echo && echo "[PREREQS installation]" && echo
 apt-get -qq update &>/dev/null      && echo update  && 
 apt-get -qq upgrade -y &>/dev/null  && echo upgrade &&
-apt-get -qq install curl unzip -y   && echo [] curl installed
+apt-get -qq install curl unzip -y   && echo -e "$GOOD curl installed"
 
 # TODO remote destop access and chrome
 # apt-get -qq -y install open-vm-tools-desktop xrdp && systemctl status xrdp
@@ -62,9 +61,7 @@ apt-get -qq install curl unzip -y   && echo [] curl installed
 #wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 #sudo apt install ./google-chrome*.deb
 
-# exec > "$bin_dir/setup.log" 2>&1
-# uninstall_prereqs 2>&1 >/dev/null
-# exec 1>$STDOUT 2>$STDOUT
+# TODO cockpit
 
 ## -> DOCKER #######################################################################################################
 
@@ -73,13 +70,12 @@ prereq_is_installed "docker" || {
 }
 
 exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
-prereq_is_installed "docker" && echo "[] docker installed" || echo "[] docker installation failed"
+prereq_is_installed "docker" && echo -e "$GOOD docker installed" || echo -e "$FAIL docker installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
 
-#exit
 ## -> LAZYDOCKER ###################################################################################################
 
 prereq_is_installed "lazydocker" || {
@@ -96,13 +92,12 @@ logs:
 EO1
 
 exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
-prereq_is_installed "lazydocker" && echo "[] lazydocker installed" || echo "[] lazydocker installation failed"
+prereq_is_installed "lazydocker" && echo -e "$GOOD lazydocker installed" || echo -e "$FAIL lazydocker installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #rm -f /usr/local/bin/lazydocker
 
-#exit
 ## --> VSCODE ######################################################################################################
 
   # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
@@ -136,19 +131,16 @@ prereq_is_installed "aws" || {
 }
 
 exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
-prereq_is_installed "aws" && echo "[] aws cli installed" || echo "[] aws cli installation failed"
+prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL aws cli installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 # rm /usr/local/bin/aws && rm /usr/local/bin/aws_completer && rm -rf /usr/local/aws-cli
 
-#exit
 ## --> AWS_CLI CONFIGURE ############################################################################################
 
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
-
-exec 1>$STDOUT 2>$STDERR # https://stackoverflow.com/a/57004149
 
 echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
 
@@ -169,7 +161,7 @@ while [[ $REPLY =~ ^[Yy]$ ]] ; do
   aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
   aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
   aws sts get-caller-identity &> "$bin_dir/setup.log"                              &&
-  echo && echo "[] aws creds validated"                                            &&
+  echo && echo -e "$GOOD aws creds validated"                                      &&
   aws configure set region "us-east-2"                                             &&
   aws configure set output "json"                                                  &&
   aws ecr get-login-password                                                       \
@@ -178,7 +170,7 @@ while [[ $REPLY =~ ^[Yy]$ ]] ; do
   docker login                                                                     \
   --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
   --username AWS &> "$bin_dir/setup.log"                                           &&
-  echo "[] docker ecr login verified"                                              && 
+  echo -e "$GOOD docker ecr login verified"                                        && 
   break
   read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
 
@@ -202,7 +194,7 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
   wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  >               \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"              &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                             &&
-  echo -e "\ndeploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |  \
+  echo -e "\n$GOOD deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |  \
   tee -a "$bin_dir/setup.log"                                                                            &&
   echo -e "\nTo review the log do: cat $bin_dir/setup.log" |                                             \
   tee -a "$bin_dir/setup.log"                                                                            &&
@@ -216,11 +208,11 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
 done
 
-echo
-
 ####################################################################################################################
 
-cat > "$bin_dir/sbom.conf" <<EO3
+echo -e "\nA sbom.conf example can be found at: $(pwd)/sbom-<example>.conf\n" | \
+tee -a "$bin_dir/setup.log"                                                     &&
+cat > "sbom-<example>.conf" <<EO3
 tennant=oman
 cs-version=4.3.3
 domain=wajajah.certscan.rop.gov.internal
