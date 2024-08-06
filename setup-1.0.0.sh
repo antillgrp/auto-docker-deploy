@@ -57,15 +57,7 @@ echo && echo "[PREREQS installation]" && echo
 
 apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
 apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
-apt-get -qq install curl unzip -y   && echo -e "$GOOD curl installed"
-
-# TODO remote destop access and chrome
-# apt-get -qq -y install open-vm-tools-desktop xrdp && systemctl status xrdp
-#sudo apt-get install libxss1 libappindicator1 libindicator7
-#wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-#sudo apt install ./google-chrome*.deb
-
-# TODO cockpit
+apt-get -qq -y install curl unzip   && echo -e "$GOOD curl installed"
 
 ## -> DOCKER #######################################################################################################
 
@@ -146,15 +138,14 @@ prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
+aws sts get-caller-identity &>> "$bin_dir/setup.log" && 
+echo && echo -e "$GOOD aws creds validated" || 
 echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
 
   read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
   if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
 
-done
-
-echo && echo "[AWS: Sign in as IAM user]"
-
+done && echo && echo "[AWS: Sign in as IAM user]" &&
 while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
   read -p "Enter aws access key id     :" -r < /dev/tty                            &&
