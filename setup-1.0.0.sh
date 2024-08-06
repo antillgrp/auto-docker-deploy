@@ -138,17 +138,20 @@ prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
+echo && echo "[AWS: Sign in as IAM user]" 
+
 aws sts get-caller-identity &>> "$bin_dir/setup.log" && 
 echo && echo -e "$GOOD aws creds validated" 
 
 aws sts get-caller-identity &>> "$bin_dir/setup.log" || { 
+
   echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
  
     read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
     if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
 
   done 
-  echo && echo "[AWS: Sign in as IAM user]" 
+  
   while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
     read -p "Enter aws access key id     :" -r < /dev/tty                            &&
@@ -173,6 +176,7 @@ aws sts get-caller-identity &>> "$bin_dir/setup.log" || {
     read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
 
   done
+  
 }
 
 ####################################################################################################################
