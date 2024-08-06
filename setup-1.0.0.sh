@@ -51,7 +51,7 @@ echo -e "$GOOD bin dir created: $bin_dir"
 tmp_dir=$(mktemp -d)                                && 
 echo -e "$GOOD tmp dir created: $tmp_dir"
 
-# uninstall_prereqs &>>/dev/null
+uninstall_prereqs &>>/dev/null
 
 echo && echo "[PREREQS installation]" && echo
 
