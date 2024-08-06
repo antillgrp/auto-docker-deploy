@@ -139,37 +139,41 @@ prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
 aws sts get-caller-identity &>> "$bin_dir/setup.log" && 
-echo && echo -e "$GOOD aws creds validated" || 
-echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
+echo && echo -e "$GOOD aws creds validated" 
 
-  read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
-  if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
+aws sts get-caller-identity &>> "$bin_dir/setup.log" || { 
+  echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
+ 
+    read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
+    if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
 
-done && echo && echo "[AWS: Sign in as IAM user]" &&
-while [[ $REPLY =~ ^[Yy]$ ]] ; do
+  done 
+  echo && echo "[AWS: Sign in as IAM user]" 
+  while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Enter aws access key id     :" -r < /dev/tty                            &&
-  AWS_ACCESS_KEY_ID=$REPLY                                                         &&
-  read -p "Enter aws secret access key :" -r < /dev/tty                            &&
-  AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
-  mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
-  aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
-  aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
-  aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
-  echo && echo -e "$GOOD aws creds validated"                                      &&
-  aws configure set region "us-east-2"                                             &&
-  aws configure set output "json"                                                  &&
-  aws ecr get-login-password                                                       \
-  --profile default                                                                \
-  --region $(aws configure get region) |                                           \
-  docker login                                                                     \
-  --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
-  --username AWS &>> "$bin_dir/setup.log"                                           &&
-  echo -e "$GOOD docker ecr login verified"                                        && 
-  break
-  read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
+    read -p "Enter aws access key id     :" -r < /dev/tty                            &&
+    AWS_ACCESS_KEY_ID=$REPLY                                                         &&
+    read -p "Enter aws secret access key :" -r < /dev/tty                            &&
+    AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
+    mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
+    aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
+    aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
+    aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
+    echo && echo -e "$GOOD aws creds validated"                                      &&
+    aws configure set region "us-east-2"                                             &&
+    aws configure set output "json"                                                  &&
+    aws ecr get-login-password                                                       \
+    --profile default                                                                \
+    --region $(aws configure get region) |                                           \
+    docker login                                                                     \
+    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
+    --username AWS &>> "$bin_dir/setup.log"                                           &&
+    echo -e "$GOOD docker ecr login verified"                                        && 
+    break
+    read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
 
-done
+  done
+}
 
 ####################################################################################################################
 
