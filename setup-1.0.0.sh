@@ -193,7 +193,8 @@ echo && echo "[$GITHUB_FILE unencryption]"
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty                                                &&
+  echo                                                                                                                   &&
+  read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
   wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
