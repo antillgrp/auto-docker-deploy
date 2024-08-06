@@ -189,11 +189,10 @@ GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"        
 #GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
 GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
 
-echo && echo "[$GITHUB_FILE unencryption]"
+echo && echo "[$GITHUB_FILE unencryption]" && echo
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  echo                                                                                                                   &&
   read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
   wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
