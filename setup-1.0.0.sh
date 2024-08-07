@@ -55,9 +55,9 @@ uninstall_prereqs &>>/dev/null
 
 echo && echo "[PREREQS installation]" && echo
 
-apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
-apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
-apt-get -qq -y install curl unzip   && echo -e "$GOOD curl installed"
+apt-get -qq update                &>/dev/null && echo -e "$GOOD system updated"  && 
+apt-get -qq upgrade -y            &>/dev/null && echo -e "$GOOD system upgraded" &&
+apt-get -qq -y install curl unzip &>/dev/null && echo -e "$GOOD curl installed"
 
 ## -> DOCKER #######################################################################################################
 
