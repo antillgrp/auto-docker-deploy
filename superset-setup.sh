@@ -76,6 +76,7 @@ def do():
 
 do()
 EOF
+
 tee "02-superset-db-exists.py" <<EOF > /dev/null
 #!/usr/local/bin/python3
 import psycopg2; import os;
@@ -94,6 +95,7 @@ def do():
 
 do()
 EOF
+
 tee "03-create-superset-db.py" <<EOF > /dev/null
 #!/usr/local/bin/python3
 import psycopg2; import os;
