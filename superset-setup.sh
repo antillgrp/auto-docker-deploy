@@ -124,7 +124,7 @@ def do():
 do()
 EOF
 
-exec &> >(tee -a "/app/superset_home/superset-$(date +"%Y%m%d").log")
+exec &> >(tee -a "/app/superset_home/logs/superset-$(date +"%Y%m%d").log") # TODO needs logs rotation
 
 until python3 01-postgres-ready.py && printf "\n$(date +"%Y%m%d %H:%M:%S"): postgres already accepting connections ...\n\n"
 do printf "\n$(date +"%Y%m%d %H:%M:%S"): Waiting for postgres to be ready ...\n"; sleep 5; done
