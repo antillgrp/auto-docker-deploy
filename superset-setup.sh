@@ -124,6 +124,8 @@ def do():
 do()
 EOF
 
+chmod +x *
+
 exec &> >(tee -a "/app/superset_home/logs/superset-$(date +"%Y%m%d").log") # TODO needs logs rotation
 
 until python3 01-postgres-ready.py && printf "\n$(date +"%Y%m%d %H:%M:%S"): postgres already accepting connections ...\n\n"
