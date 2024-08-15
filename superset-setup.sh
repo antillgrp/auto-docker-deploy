@@ -9,7 +9,7 @@ CONTENT_SECURITY_POLICY_WARNING = False
 
 import os;
 
-SQLALCHEMY_DATABASE_URI = f'{os.environ["SUPERSET_DB_ENGINE"]}://{os.environ["POSTGRES_USER"]}:{os.environ["POSTGRES_PASSWORD"]}@{os.environ["DATABASE_URL"]}/{os.environ["SUPERSET>
+SQLALCHEMY_DATABASE_URI = f'{os.environ["SUPERSET_DB_ENGINE"]}://{os.environ["POSTGRES_USER"]}:{os.environ["POSTGRES_PASSWORD"]}@{os.environ["DATABASE_URL"]}/{os.environ["SUPERSET_DB_NAME"]}'
 
 ####################################################################################
 
