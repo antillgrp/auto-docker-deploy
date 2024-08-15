@@ -1,5 +1,7 @@
 #!/bin/bash
 
+whoami
+
 tee "00-superset-config.py" <<EOF > /dev/null
 print("\n!!!!!!!!!!!!!!!!!!!!!!!!INIT SUPERSET_CONFIG.PY!!!!!!!!!!!!!!!!!!!!!!!!!")
 
