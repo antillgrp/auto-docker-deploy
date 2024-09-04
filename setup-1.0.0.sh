@@ -39,7 +39,7 @@ EOF
 
 # $$ = the PID of the running script instance
 STDOUT=`readlink -f /proc/$$/fd/1`
-STDERR=`readlink -f /proc/$$/fd/2`
+#STDERR=`readlink -f /proc/$$/fd/2`
 #exec > "$bin_dir/setup.log" 2>&1
 
 GOOD="\033[1;32m☑\033[0m"
@@ -49,22 +49,17 @@ COOL="\033[1;33m😎\033[0m"
 #set prompts 
 grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
 sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
-echo -e "$GOOD ${SUDO_USER}'s prompt changed"
+echo -e "$COOL ${SUDO_USER}'s prompt changed"
 
-#grep '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc
 grep -qi '\\n\\$\ ' /root/.bashrc                || 
 sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
-echo -e "$GOOD root's prompt changed"
-
-#grep '\\n\\$\ ' /root/.bashrc
+echo -e "$COOL root's prompt changed"
 
 #https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
 echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
 tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
 chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw" 
-echo -e "$GOOD ${SUDO_USER} configured for non password sudo"
-
-
+echo -e "$COOL ${SUDO_USER} configured for non password sudo"
 
 echo && echo "[Initialization]" && echo
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
@@ -87,7 +82,7 @@ prereq_is_installed "docker" || {
   wget -qO- https://get.docker.com | bash &>/dev/null
 }
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
 prereq_is_installed "docker" && echo -e "$GOOD docker installed" || echo -e "$FAIL docker installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
@@ -97,11 +92,12 @@ prereq_is_installed "docker" && echo -e "$GOOD docker installed" || echo -e "$FA
 ## -> LAZYDOCKER ###################################################################################################
 
 prereq_is_installed "lazydocker" || {
-  wget -qO- "https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh" \
+  # shellcheck disable=SC2016
+    wget -qO- "https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh" \
   | sed 's|$HOME/.local/bin|/usr/local/bin|'                                                                    \
   | bash &>/dev/null
 } &&
-mkdir -p $HOME/.config/lazydocker && cat > $HOME/.config/lazydocker/config.yml <<EO1
+mkdir -p "$HOME/.config/lazydocker" && cat > "$HOME/.config/lazydocker/config.yml" <<EO1
 # https://github.com/jesseduffield/lazydocker/blob/master/docs/Config.md
 logs:
   timestamps: true
@@ -109,7 +105,7 @@ logs:
   tail: '50'            # set to 200 to show last 200 lines of logs
 EO1
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
 prereq_is_installed "lazydocker" && echo -e "$GOOD lazydocker installed" || echo -e "$FAIL lazydocker installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
@@ -123,7 +119,7 @@ prereq_is_installed "aws" || {
   #unzip -o -X -qq -d "$tmp_dir" "$tmp_dir/awscliv2.zip" 
   #$tmp_dir/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
   wget -qO- "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"     |
-  busybox unzip -d "$tmp_dir" - 2>&1 > "$tmp_dir/aws-unzip.log"            &&
+  busybox unzip -d "$tmp_dir" - >"$tmp_dir/aws-unzip.log" 2>&1             &&
   chmod -R +x "$tmp_dir/aws"                                               &&
   sudo "$tmp_dir/aws/install"                                              \
   --bin-dir /usr/local/bin                                                 \
@@ -132,7 +128,7 @@ prereq_is_installed "aws" || {
   2>&1 > "$tmp_dir"/aws-install.log
 }
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
 prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL aws cli installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
@@ -160,24 +156,24 @@ aws sts get-caller-identity &>> "$bin_dir/setup.log" || {
   
   while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-    read -p "Enter aws access key id     :" -r < /dev/tty                            &&
-    AWS_ACCESS_KEY_ID=$REPLY                                                         &&
-    read -p "Enter aws secret access key :" -r < /dev/tty                            &&
-    AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
-    mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
-    aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
-    aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
-    aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
-    echo && echo -e "$GOOD aws creds validated"                                      &&
-    aws configure set region "us-east-2"                                             &&
-    aws configure set output "json"                                                  &&
-    aws ecr get-login-password                                                       \
-    --profile default                                                                \
-    --region $(aws configure get region) |                                           \
-    docker login                                                                     \
-    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
+    read -p "Enter aws access key id     :" -r < /dev/tty                             &&
+    AWS_ACCESS_KEY_ID=$REPLY                                                          &&
+    read -p "Enter aws secret access key :" -r < /dev/tty                             &&
+    AWS_SECRET_ACCESS_KEY=$REPLY                                                      &&
+    mkdir -p $HOME/.aws && echo -e "[default]                                         \n\
+    aws_access_key_id=${AWS_ACCESS_KEY_ID}                                            \n\
+    aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials          &&
+    aws sts get-caller-identity &>> "$bin_dir/setup.log"                              &&
+    echo && echo -e "$GOOD aws creds validated"                                       &&
+    aws configure set region "us-east-2"                                              &&
+    aws configure set output "json"                                                   &&
+    aws ecr get-login-password                                                        \
+    --profile default                                                                 \
+    --region "$(aws configure get region)" |                                          \
+    docker login                                                                      \
+    --password-stdin "585953033457.dkr.ecr.$(aws configure get region).amazonaws.com" \
     --username AWS &>> "$bin_dir/setup.log"                                           &&
-    echo -e "$GOOD docker ecr login verified"                                        && 
+    echo -e "$GOOD docker ecr login verified"                                         && 
     break
     read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
 
@@ -200,7 +196,7 @@ echo && echo "[$GITHUB_FILE unencryption]" && echo
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
   read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
-  wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
+  wget -qO- "$GITHUB_URL" | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
   echo -e "\n$COOL deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |            \
