@@ -126,7 +126,7 @@ prereq_is_installed "aws" || {
   --bin-dir /usr/local/bin                                                 \
   --install-dir /usr/local/aws-cli                                         \
   --update                                                                 \
-  2>&1 > "$tmp_dir"/aws-install.log
+  >"$tmp_dir/aws-install.log" 2>&1
 }
 
 exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
@@ -196,21 +196,20 @@ echo && echo "[$GITHUB_FILE unencryption]" && echo
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
-  wget -qO- "$GITHUB_URL" | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
-  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
-  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
-  echo -e "\n$COOL deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |            \
+  read -p "Please, enter unencryption password: " -r < /dev/tty && PASS=${REPLY}                                         &&
+  wget -qO- "$GITHUB_URL" | openssl aes-128-cbc -k "${PASS}" -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >    \
+  "$bin_dir/deploy-certscan-docker.sh"                                                                                   &&
+  chmod +x "$bin_dir/deploy-certscan-docker.sh"                                                                          &&
+  echo -e "\n$COOL Prereqs and \033[1;33mdeploy-certscan-docker.sh\033[0m succefully installed" |                        \
   tee -a "$bin_dir/setup.log"                                                                                            &&
   echo -e "\n$COOL To review the log do: \033[1;33mcat $bin_dir/setup.log\033[0m" |                                      \
   tee -a "$bin_dir/setup.log"                                                                                            &&
-  ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                               \
-  "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                &&
-  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
+  ln -sf "$bin_dir/deploy-certscan-docker.sh" "/usr/local/bin/deploy-certscan-docker.sh"                                 &&
+  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker.sh\033[0m" |                              \
   tee -a "$bin_dir/setup.log"                                                                                            &&
   break
-  read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"                           \
-  -n 1 -r < /dev/tty && echo
+  read -p "$GITHUB_FILE Could decrypt it with the provided password. Try again? (yY/nN)"  -n 1 -r < /dev/tty             && 
+  echo
 
 done
 
