@@ -4,6 +4,7 @@
 
 # wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
 
+# shellcheck disable=SC2034
 VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
@@ -38,7 +39,7 @@ $(declare -f uninstall_prereqs)
 EOF
 
 # $$ = the PID of the running script instance
-STDOUT=`readlink -f /proc/$$/fd/1`
+STDOUT=$(readlink -f /proc/$$/fd/1) # `readlink -f /proc/$$/fd/1`
 #STDERR=`readlink -f /proc/$$/fd/2`
 #exec > "$bin_dir/setup.log" 2>&1
 
