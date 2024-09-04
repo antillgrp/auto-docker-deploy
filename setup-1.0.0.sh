@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
-
 # git config user.email "antillgrp@gmail.com" && git config user.name "antillgrp" && git add . && git commit -m "sync: $(date)" && git push
+
+# wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
 
 VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
@@ -11,19 +11,6 @@ VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/mast
 
 # shellcheck disable=SC2241
 test $? -eq 0 || exit 1 "you should have sudo/root  privilege to run this script"
-
-#set prompts 
-grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
-sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
-#grep '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc
-grep -qi '\\n\\$\ ' /root/.bashrc                || 
-sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
-#grep '\\n\\$\ ' /root/.bashrc
-
-#https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
-echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
-tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
-chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw"
 
 prereq_is_installed(){
   [[ -z $(which "$1") ]] && return 1
@@ -58,6 +45,26 @@ STDERR=`readlink -f /proc/$$/fd/2`
 GOOD="\033[1;32m☑\033[0m"
 FAIL="\033[1;31m☒\033[0m"
 COOL="\033[1;33m😎\033[0m"
+
+#set prompts 
+grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
+sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
+echo -e "$GOOD ${SUDO_USER}'s prompt changed"
+
+#grep '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc
+grep -qi '\\n\\$\ ' /root/.bashrc                || 
+sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
+echo -e "$GOOD root's prompt changed"
+
+#grep '\\n\\$\ ' /root/.bashrc
+
+#https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
+echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
+tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
+chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw" 
+echo -e "$GOOD ${SUDO_USER} configured for non password sudo"
+
+
 
 echo && echo "[Initialization]" && echo
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
