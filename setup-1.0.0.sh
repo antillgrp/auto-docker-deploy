@@ -46,6 +46,7 @@ GOOD="\033[1;32m☑\033[0m"
 FAIL="\033[1;31m☒\033[0m"
 COOL="\033[1;33m😎\033[0m"
 
+echo && echo "[System customization]" && echo
 #set prompts 
 grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
 sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
