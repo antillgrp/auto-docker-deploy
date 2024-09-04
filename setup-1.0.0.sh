@@ -2,13 +2,13 @@
 
 # wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
 
-# git add . && git commit -m "sync: $(date)" && git push
+# git config user.email "antillgrp@gmail.com" && git config user.name "antillgrp" && git add . && git commit -m "sync: $(date)" && git push
 
 VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
-test $? -eq 0 || exit 1 "you should have sudo privilege to run this script"
+test $? -eq 0 || exit 1 "you should have sudo/root  privilege to run this script"
 
 prereq_is_installed(){
   [[ -z $(which $1) ]] && return 1
@@ -18,16 +18,14 @@ prereq_is_installed(){
 
 uninstall_prereqs(){
   #DOCKER
-  apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
+  sudo apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
   #LAZYDOCKER
-  rm -f /usr/local/bin/lazydocker
+  sudo rm -f /usr/local/bin/lazydocker
   #AWS CLI
-  rm /usr/local/bin/aws && rm /usr/local/bin/aws_completer && rm -rf /usr/local/aws-cli
+  sudo rm -rf /usr/local/bin/aws /usr/local/bin/aws_completer /usr/local/aws-cli
   #VSCODE
-  dpkg --purge code
+  sudo dpkg --purge code
 }
-
-export PATH="${PATH}:/opt/certscan/bin"
 
 grep -qi "prereq_is_installed" /etc/profile || cat <<EOF >> /etc/profile
 
@@ -35,26 +33,31 @@ $(declare -f prereq_is_installed)
 
 $(declare -f uninstall_prereqs)
 
-export PATH="${PATH}"
-
 EOF
-
-bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir
 
 # $$ = the PID of the running script instance
 STDOUT=`readlink -f /proc/$$/fd/1`
 STDERR=`readlink -f /proc/$$/fd/2`
-exec > "$bin_dir/setup.log" 2>&1
+#exec > "$bin_dir/setup.log" 2>&1
 
-tmp_dir=$(mktemp -d) && echo $tmp_dir
+GOOD="\033[1;32m☑\033[0m"
+FAIL="\033[1;31m☒\033[0m"
+COOL="\033[1;33m😎\033[0m"
 
-apt-get -qq update &>/dev/null && apt-get -qq upgrade -y &>/dev/null && echo update
+echo && echo "[Initialization]" && echo
+bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
+echo -e "$GOOD bin dir created: $bin_dir"
 
-# TODO remote destop access and chrome
-# apt-get -qq -y install open-vm-tools-desktop xrdp && systemctl status xrdp
-#sudo apt-get install libxss1 libappindicator1 libindicator7
-#wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-#sudo apt install ./google-chrome*.deb
+tmp_dir=$(mktemp -d)                                && 
+echo -e "$GOOD tmp dir created: $tmp_dir"
+
+# uninstall_prereqs &>>/dev/null
+
+echo && echo "[PREREQS installation]" && echo
+
+apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
+apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
+apt-get -qq -y install curl unzip   && echo -e "$GOOD curl installed"
 
 ## -> DOCKER #######################################################################################################
 
@@ -62,8 +65,9 @@ prereq_is_installed "docker" || {
   wget -qO- https://get.docker.com | bash &>/dev/null
 }
 
-#TODO debug
-prereq_is_installed "docker" && echo "docker" || echo "no docker"
+exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+prereq_is_installed "docker" && echo -e "$GOOD docker installed" || echo -e "$FAIL docker installation failed"
+#exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
@@ -83,89 +87,88 @@ logs:
   tail: '50'            # set to 200 to show last 200 lines of logs
 EO1
 
-#TODO debug
-prereq_is_installed "lazydocker" && echo "lazydocker" || echo "no lazydocker"
+exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+prereq_is_installed "lazydocker" && echo -e "$GOOD lazydocker installed" || echo -e "$FAIL lazydocker installation failed"
+#exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #rm -f /usr/local/bin/lazydocker
 
 ## --> VSCODE ######################################################################################################
 
-code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
-prereq_is_installed "code" || {
-  mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
-  'https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64' &&
-  dpkg -i "$tmp_dir/vscode.deb" 2>&1  > "$tmp_dir/vscode_install.log"        &&
-  echo "alias code=\"code --no-sandbox --user-data-dir $HOME/.vscode\"" >> $HOME/.bashrc
-}
-#TODO debug
-prereq_is_installed "code" && echo "code" || echo "no code"
+  # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
+  # prereq_is_installed "code" || {
+  #   mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
+  #   'https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64' &&
+  #   dpkg -i "$tmp_dir/vscode.deb" 2>&1  > "$tmp_dir/vscode_install.log"        &&
+  #   echo "alias code=\"code --no-sandbox --user-data-dir $HOME/.vscode\"" >> $HOME/.bashrc
+  # }
 
-#Unistall
-# dpkg --purge code
+  # #TODO debug
+  # prereq_is_installed "code" && echo "code" || echo "no code"
+
+  #Unistall
+  # dpkg --purge code
 
 ## --> AWS_CLI #####################################################################################################
 
 prereq_is_installed "aws" || {
+  #curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "$tmp_dir/awscliv2.zip"
+  #unzip -o -X -qq -d "$tmp_dir" "$tmp_dir/awscliv2.zip" 
+  #$tmp_dir/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
   wget -qO- "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"     |
   busybox unzip -d "$tmp_dir" - 2>&1 > "$tmp_dir/aws-unzip.log"            &&
   chmod -R +x "$tmp_dir/aws"                                               &&
-  "$tmp_dir"/aws/install -i /usr/local/aws-cli -b /usr/local/bin --update  \
+  sudo "$tmp_dir/aws/install"                                              \
+  --bin-dir /usr/local/bin                                                 \
+  --install-dir /usr/local/aws-cli                                         \
+  --update                                                                 \
   2>&1 > "$tmp_dir"/aws-install.log
 }
 
-#TODO debug
-prereq_is_installed "aws" && echo "aws" || echo "no aws" 
+exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL aws cli installation failed"
+#exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 # rm /usr/local/bin/aws && rm /usr/local/bin/aws_completer && rm -rf /usr/local/aws-cli
 
+## --> AWS_CLI CONFIGURE ############################################################################################
+
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+aws sts get-caller-identity &>> "$bin_dir/setup.log" && 
+echo && echo -e "$GOOD aws creds validated" || 
+echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
 
-whiptail \
-    --title "AWS: Sign in as IAM user" \
-    --yesno "                        Would you like to provide AWS IAM credetials now?" \
-    --fb 10 100 3>&1 1>&2 2>&3 && 
-while true ; do
-  # https://stackoverflow.com/a/49356580
-  export AWS_ACCESS_KEY_ID=$(whiptail                                 \
-    --title "AWS: Sign in as IAM user"                                \
-    --inputbox "                        \nEnter aws access key id:"   \
-    --fb 10 100 3>&1 1>&2 2>&3
-  ) &&
-  export AWS_SECRET_ACCESS_KEY=$(whiptail                             \
-    --title "AWS: Sign in as IAM user"                                \
-    --inputbox "                        Enter aws secret access key:" \
-    --fb 10 100 3>&1 1>&2 2>&3
-  ) && 
-  aws sts get-caller-identity 2>&1 >> "$bin_dir/setup.log"                          &&
-  # mkdir -p $HOME/.aws                                                             &&
-  # echo -e "[default]                                                              \n\
-  # aws_access_key_id=${AWS_ACCESS_KEY_ID}                                          \n\
-  # aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials        &&
-  # echo -e "[default]                                                              \n\
-  # region="us-east-2"                                                              \n\
-  # output=json" > $HOME/.aws/config                                                &&
-  {
-    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}                        &&
-    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}                &&
-    aws configure set region "us-east-2"                                            &&
-    aws configure set output "json"                                                 &&
-    aws ecr get-login-password --profile default                                    \
-    --region $(aws configure get region) |                                          \
-    docker login                                                                    \
-    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com \
-    --username AWS 2>&1 >> "$bin_dir/setup.log"                                     && 
-    break
-  } 2>&1 >> "$bin_dir/setup.log" 
-  whiptail \
-    --clear \
-    --title "AWS: Sign in as IAM user" \
-    --yesno "               Error: The provided ID/KEY pair could not be verified. Try again?" \
-    --fb 10 100 3>&1 1>&2 2>&3 || break # $(stty size) 
+  read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
+  if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
+
+done && echo && echo "[AWS: Sign in as IAM user]" &&
+while [[ $REPLY =~ ^[Yy]$ ]] ; do
+
+  read -p "Enter aws access key id     :" -r < /dev/tty                            &&
+  AWS_ACCESS_KEY_ID=$REPLY                                                         &&
+  read -p "Enter aws secret access key :" -r < /dev/tty                            &&
+  AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
+  mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
+  aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
+  aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
+  aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
+  echo && echo -e "$GOOD aws creds validated"                                      &&
+  aws configure set region "us-east-2"                                             &&
+  aws configure set output "json"                                                  &&
+  aws ecr get-login-password                                                       \
+  --profile default                                                                \
+  --region $(aws configure get region) |                                           \
+  docker login                                                                     \
+  --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
+  --username AWS &>> "$bin_dir/setup.log"                                           &&
+  echo -e "$GOOD docker ecr login verified"                                        && 
+  break
+  read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
+
 done
 
 ####################################################################################################################
@@ -177,28 +180,33 @@ GITHUB_LATEST_VERSION=$(
 GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                                &&
 #GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
 GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
-while true ; do
-  encrypt_pass=$(whiptail                                                                                               \
-      --title "$GITHUB_FILE unencryption"                                                                               \
-      --passwordbox "\n             Please, enter unencryption password:"                                               \
-      --fb 10 100 3>&1 1>&2 2>&3)                                                                                        && 
-  wget -qO- $GITHUB_URL |                                                                                               \
-  openssl aes-128-cbc -d -pbkdf2 -iter 100 -a -salt -k ${encrypt_pass} >                                                \
-  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh" 2>> "$bin_dir/setup.log"                            &&
-  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                            &&
-  echo "deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh succefuly downloaded and made executable" >>             \
-  "$bin_dir/setup.log"                                                                                                  && 
-  break                                                                                                                 ||
-  whiptail                                                                                                              \
-    --clear                                                                                                             \
-    --title "$GITHUB_FILE unencryption"                                                                                 \
-    --yesno "Error: $GITHUB_FILE could not be decrypted with the provided password. Try again?"                         \
-    --fb 10 100 3>&1 1>&2 2>&3 || break # $(stty size)
+
+echo && echo "[$GITHUB_FILE unencryption]"
+
+REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
+
+  read -p "Please, enter unencryption password: " -r < /dev/tty                                                &&
+  wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
+  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
+  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
+  echo -e "\n$COOL deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |            \
+  tee -a "$bin_dir/setup.log"                                                                                            &&
+  echo -e "\n$COOL To review the log do: \033[1;33mcat $bin_dir/setup.log\033[0m" |                                      \
+  tee -a "$bin_dir/setup.log"                                                                                            &&
+  ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                               \
+  "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                &&
+  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
+  tee -a "$bin_dir/setup.log"                                                                                            &&
+  break
+  read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"                           \
+  -n 1 -r < /dev/tty && echo
+
 done
 
 ####################################################################################################################
-
-cat > "$bin_dir/sbom.conf" <<EO3
+echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-example.conf\033[0m\n" | \
+tee -a "$bin_dir/setup.log"                                                                          &&
+cat > "sbom-example.conf" <<EO3
 tennant=oman
 cs-version=4.3.3
 domain=wajajah.certscan.rop.gov.internal
@@ -234,3 +242,5 @@ cis-ps=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/ps:dev-4.5.1.28
 emu-scans-path=cis-emulator/cs-cis-demo.zip
 emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
 EO3
+
+###################################################################################################################

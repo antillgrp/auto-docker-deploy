@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:  
+  postgres:
+    image: 585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/postgres:4.3.5-release-20240812
+    container_name: postgres
+    restart: always
+    command:
+      [
+        "postgres",
+        "-c",
+        "log_statement=all",
+        "-c",
+        "log_destination=stderr",
+        "-c",
+        "shared_preload_libraries=pg_cron",
+        "-c",
+        "max_worker_processes=40",
+        "-c",
+        "cron.database_name=certscandb",
+      ]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    volumes:
+      - "pg-data:/var/lib/postgresql/data"
+      - "/etc/timezone:/etc/timezone:ro" 
+      - "/etc/localtime:/etc/localtime:ro"
+    ports:
+      - "5432"
+    networks:
+      - cs_backend
+   
+  flyway:
+    image: 585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.3.5-release-20240812
+    container_name: flyway
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres
+      DATABASE_LIST: certscandb
+      DATABASE_SCHEMA_LIST: oman
+      FLYWAY_USER: postgres
+      FLYWAY_PASSWORD: postgres
+      FLYWAY_IGNORiE_MIGRATION_PATTERNS: "*:ignored"
+    volumes:
+      - "/etc/timezone:/etc/timezone:ro" 
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend  
+
+
+volumes:
+  pg-data:
+    external: true
+
+
+networks:
+  cs_backend:
