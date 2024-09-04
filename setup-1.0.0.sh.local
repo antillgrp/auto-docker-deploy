@@ -8,33 +8,23 @@ VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/mast
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
-
-# shellcheck disable=SC2241
 test $? -eq 0 || exit 1 "you should have sudo/root  privilege to run this script"
 
-#set prompts 
-grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
-sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
-#grep '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc
-grep -qi '\\n\\$\ ' /root/.bashrc                || 
-sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
-#grep '\\n\\$\ ' /root/.bashrc
-
 prereq_is_installed(){
-  [[ -z $(which "$1") ]] && return 1
+  [[ -z $(which $1) ]] && return 1
   [[ -z $($1 --version) ]] && return 1
   return 0
 }
 
 uninstall_prereqs(){
   #DOCKER
-  apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
+  sudo apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
   #LAZYDOCKER
-  rm -f /usr/local/bin/lazydocker
+  sudo rm -f /usr/local/bin/lazydocker
   #AWS CLI
-  rm -rf /usr/local/bin/aws /usr/local/bin/aws_completer /usr/local/aws-cli
+  sudo rm -rf /usr/local/bin/aws /usr/local/bin/aws_completer /usr/local/aws-cli
   #VSCODE
-  #dpkg --purge code
+  sudo dpkg --purge code
 }
 
 grep -qi "prereq_is_installed" /etc/profile || cat <<EOF >> /etc/profile
@@ -61,13 +51,13 @@ echo -e "$GOOD bin dir created: $bin_dir"
 tmp_dir=$(mktemp -d)                                && 
 echo -e "$GOOD tmp dir created: $tmp_dir"
 
-uninstall_prereqs &>>/dev/null
+# uninstall_prereqs &>>/dev/null
 
 echo && echo "[PREREQS installation]" && echo
 
-apt-get -qq update                &>/dev/null && echo -e "$GOOD system updated"  && 
-apt-get -qq upgrade -y            &>/dev/null && echo -e "$GOOD system upgraded" &&
-apt-get -qq -y install curl unzip &>/dev/null && echo -e "$GOOD curl installed"
+apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
+apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
+apt-get -qq -y install curl unzip   && echo -e "$GOOD curl installed"
 
 ## -> DOCKER #######################################################################################################
 
@@ -104,6 +94,22 @@ prereq_is_installed "lazydocker" && echo -e "$GOOD lazydocker installed" || echo
 #Uninstall
 #rm -f /usr/local/bin/lazydocker
 
+## --> VSCODE ######################################################################################################
+
+  # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
+  # prereq_is_installed "code" || {
+  #   mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
+  #   'https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64' &&
+  #   dpkg -i "$tmp_dir/vscode.deb" 2>&1  > "$tmp_dir/vscode_install.log"        &&
+  #   echo "alias code=\"code --no-sandbox --user-data-dir $HOME/.vscode\"" >> $HOME/.bashrc
+  # }
+
+  # #TODO debug
+  # prereq_is_installed "code" && echo "code" || echo "no code"
+
+  #Unistall
+  # dpkg --purge code
+
 ## --> AWS_CLI #####################################################################################################
 
 prereq_is_installed "aws" || {
@@ -132,46 +138,38 @@ prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
-echo && echo "[AWS: Sign in as IAM user]" 
-
 aws sts get-caller-identity &>> "$bin_dir/setup.log" && 
-echo && echo -e "$GOOD aws creds validated" 
+echo && echo -e "$GOOD aws creds validated" || 
+echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
 
-aws sts get-caller-identity &>> "$bin_dir/setup.log" || { 
+  read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
+  if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
 
-  echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
- 
-    read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
-    if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
+done && echo && echo "[AWS: Sign in as IAM user]" &&
+while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  done 
-  
-  while [[ $REPLY =~ ^[Yy]$ ]] ; do
+  read -p "Enter aws access key id     :" -r < /dev/tty                            &&
+  AWS_ACCESS_KEY_ID=$REPLY                                                         &&
+  read -p "Enter aws secret access key :" -r < /dev/tty                            &&
+  AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
+  mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
+  aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
+  aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
+  aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
+  echo && echo -e "$GOOD aws creds validated"                                      &&
+  aws configure set region "us-east-2"                                             &&
+  aws configure set output "json"                                                  &&
+  aws ecr get-login-password                                                       \
+  --profile default                                                                \
+  --region $(aws configure get region) |                                           \
+  docker login                                                                     \
+  --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
+  --username AWS &>> "$bin_dir/setup.log"                                           &&
+  echo -e "$GOOD docker ecr login verified"                                        && 
+  break
+  read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
 
-    read -p "Enter aws access key id     :" -r < /dev/tty                            &&
-    AWS_ACCESS_KEY_ID=$REPLY                                                         &&
-    read -p "Enter aws secret access key :" -r < /dev/tty                            &&
-    AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
-    mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
-    aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
-    aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
-    aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
-    echo && echo -e "$GOOD aws creds validated"                                      &&
-    aws configure set region "us-east-2"                                             &&
-    aws configure set output "json"                                                  &&
-    aws ecr get-login-password                                                       \
-    --profile default                                                                \
-    --region $(aws configure get region) |                                           \
-    docker login                                                                     \
-    --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
-    --username AWS &>> "$bin_dir/setup.log"                                           &&
-    echo -e "$GOOD docker ecr login verified"                                        && 
-    break
-    read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
-
-  done
-  
-}
+done
 
 ####################################################################################################################
 
@@ -183,11 +181,11 @@ GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"        
 #GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
 GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
 
-echo && echo "[$GITHUB_FILE unencryption]" && echo
+echo && echo "[$GITHUB_FILE unencryption]"
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty                                                          &&
+  read -p "Please, enter unencryption password: " -r < /dev/tty                                                &&
   wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
   "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
   chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
@@ -206,7 +204,6 @@ REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 done
 
 ####################################################################################################################
-
 echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-example.conf\033[0m\n" | \
 tee -a "$bin_dir/setup.log"                                                                          &&
 cat > "sbom-example.conf" <<EO3
@@ -247,20 +244,3 @@ emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
 EO3
 
 ###################################################################################################################
-
-## --> VSCODE ######################################################################################################
-
-  # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
-  # prereq_is_installed "code" || {
-  #   mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
-  #   'https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64' &&
-  #   dpkg -i "$tmp_dir/vscode.deb" 2>&1  > "$tmp_dir/vscode_install.log"        &&
-  #   echo "alias code=\"code --no-sandbox --user-data-dir $HOME/.vscode\"" >> $HOME/.bashrc
-  # }
-
-  # #TODO debug
-  # prereq_is_installed "code" && echo "code" || echo "no code"
-
-  #Unistall
-  # dpkg --purge code
-
