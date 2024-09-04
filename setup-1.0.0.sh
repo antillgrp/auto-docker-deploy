@@ -20,6 +20,11 @@ grep -qi '\\n\\$\ ' /root/.bashrc                ||
 sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
 #grep '\\n\\$\ ' /root/.bashrc
 
+#https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
+echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
+tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
+chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw"
+
 prereq_is_installed(){
   [[ -z $(which "$1") ]] && return 1
   [[ -z $($1 --version) ]] && return 1
