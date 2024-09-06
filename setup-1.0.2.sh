@@ -2,7 +2,7 @@
 
 # git config user.email "antillgrp@gmail.com" && git config user.name "antillgrp" && git add . && git commit -m "sync: $(date)" && git push
 
-# wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
+# wget -qO- https://tinyurl.com/setup-1-0-2-sh | sudo bash
 
 # shellcheck disable=SC2034
 VERSION=1.0.2 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
