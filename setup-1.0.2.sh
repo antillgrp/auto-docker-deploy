@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
 
-# wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
-
 # git config user.email "antillgrp@gmail.com" && git config user.name "antillgrp" && git add . && git commit -m "sync: $(date)" && git push
 
+# wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
+
+# shellcheck disable=SC2034
 VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
+
+# shellcheck disable=SC2241
 test $? -eq 0 || exit 1 "you should have sudo/root  privilege to run this script"
 
 prereq_is_installed(){
-  [[ -z $(which $1) ]] && return 1
+  [[ -z $(which "$1") ]] && return 1
   [[ -z $($1 --version) ]] && return 1
   return 0
 }
 
 uninstall_prereqs(){
   #DOCKER
-  sudo apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
+  apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli
   #LAZYDOCKER
-  sudo rm -f /usr/local/bin/lazydocker
+  rm -f /usr/local/bin/lazydocker
   #AWS CLI
-  sudo rm -rf /usr/local/bin/aws /usr/local/bin/aws_completer /usr/local/aws-cli
+  rm -rf /usr/local/bin/aws /usr/local/bin/aws_completer /usr/local/aws-cli
   #VSCODE
-  sudo dpkg --purge code
+  #dpkg --purge code
 }
 
 grep -qi "prereq_is_installed" /etc/profile || cat <<EOF >> /etc/profile
@@ -36,13 +39,29 @@ $(declare -f uninstall_prereqs)
 EOF
 
 # $$ = the PID of the running script instance
-STDOUT=`readlink -f /proc/$$/fd/1`
-STDERR=`readlink -f /proc/$$/fd/2`
+STDOUT=$(readlink -f /proc/$$/fd/1) # `readlink -f /proc/$$/fd/1`
+#STDERR=`readlink -f /proc/$$/fd/2`
 #exec > "$bin_dir/setup.log" 2>&1
 
 GOOD="\033[1;32m☑\033[0m"
 FAIL="\033[1;31m☒\033[0m"
 COOL="\033[1;33m😎\033[0m"
+
+echo && echo "[System customization]" && echo
+#set prompts 
+grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
+sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
+echo -e "$COOL ${SUDO_USER}'s prompt changed"
+
+grep -qi '\\n\\$\ ' /root/.bashrc                || 
+sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
+echo -e "$COOL root's prompt changed"
+
+#https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
+echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
+tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
+chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw" 
+echo -e "$COOL ${SUDO_USER} configured for non password sudo"
 
 echo && echo "[Initialization]" && echo
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
@@ -51,13 +70,13 @@ echo -e "$GOOD bin dir created: $bin_dir"
 tmp_dir=$(mktemp -d)                                && 
 echo -e "$GOOD tmp dir created: $tmp_dir"
 
-# uninstall_prereqs &>>/dev/null
+uninstall_prereqs &>>/dev/null
 
 echo && echo "[PREREQS installation]" && echo
 
-apt-get -qq update &>/dev/null      && echo -e "$GOOD system updated"  && 
-apt-get -qq upgrade -y &>/dev/null  && echo -e "$GOOD system upgraded" &&
-apt-get -qq -y install curl unzip   && echo -e "$GOOD curl installed"
+apt-get -qq update                &>/dev/null && echo -e "$GOOD system updated"  && 
+apt-get -qq upgrade -y            &>/dev/null && echo -e "$GOOD system upgraded" &&
+apt-get -qq -y install curl unzip &>/dev/null && echo -e "$GOOD curl installed"
 
 ## -> DOCKER #######################################################################################################
 
@@ -65,7 +84,7 @@ prereq_is_installed "docker" || {
   wget -qO- https://get.docker.com | bash &>/dev/null
 }
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
 prereq_is_installed "docker" && echo -e "$GOOD docker installed" || echo -e "$FAIL docker installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
@@ -75,11 +94,12 @@ prereq_is_installed "docker" && echo -e "$GOOD docker installed" || echo -e "$FA
 ## -> LAZYDOCKER ###################################################################################################
 
 prereq_is_installed "lazydocker" || {
-  wget -qO- "https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh" \
+  # shellcheck disable=SC2016
+    wget -qO- "https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh" \
   | sed 's|$HOME/.local/bin|/usr/local/bin|'                                                                    \
   | bash &>/dev/null
 } &&
-mkdir -p $HOME/.config/lazydocker && cat > $HOME/.config/lazydocker/config.yml <<EO1
+mkdir -p "$HOME/.config/lazydocker" && cat > "$HOME/.config/lazydocker/config.yml" <<EO1
 # https://github.com/jesseduffield/lazydocker/blob/master/docs/Config.md
 logs:
   timestamps: true
@@ -87,28 +107,12 @@ logs:
   tail: '50'            # set to 200 to show last 200 lines of logs
 EO1
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
 prereq_is_installed "lazydocker" && echo -e "$GOOD lazydocker installed" || echo -e "$FAIL lazydocker installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
 #Uninstall
 #rm -f /usr/local/bin/lazydocker
-
-## --> VSCODE ######################################################################################################
-
-  # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
-  # prereq_is_installed "code" || {
-  #   mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
-  #   'https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64' &&
-  #   dpkg -i "$tmp_dir/vscode.deb" 2>&1  > "$tmp_dir/vscode_install.log"        &&
-  #   echo "alias code=\"code --no-sandbox --user-data-dir $HOME/.vscode\"" >> $HOME/.bashrc
-  # }
-
-  # #TODO debug
-  # prereq_is_installed "code" && echo "code" || echo "no code"
-
-  #Unistall
-  # dpkg --purge code
 
 ## --> AWS_CLI #####################################################################################################
 
@@ -117,16 +121,16 @@ prereq_is_installed "aws" || {
   #unzip -o -X -qq -d "$tmp_dir" "$tmp_dir/awscliv2.zip" 
   #$tmp_dir/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
   wget -qO- "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"     |
-  busybox unzip -d "$tmp_dir" - 2>&1 > "$tmp_dir/aws-unzip.log"            &&
+  busybox unzip -d "$tmp_dir" - >"$tmp_dir/aws-unzip.log" 2>&1             &&
   chmod -R +x "$tmp_dir/aws"                                               &&
   sudo "$tmp_dir/aws/install"                                              \
   --bin-dir /usr/local/bin                                                 \
   --install-dir /usr/local/aws-cli                                         \
   --update                                                                 \
-  2>&1 > "$tmp_dir"/aws-install.log
+  >"$tmp_dir/aws-install.log" 2>&1
 }
 
-exec 1>$STDOUT 2>$STDOUT # $STDERR # https://stackoverflow.com/a/57004149
+exec 1>"$STDOUT" 2>"$STDOUT" # $STDERR # https://stackoverflow.com/a/57004149
 prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL aws cli installation failed"
 #exec > "$bin_dir/setup.log" 2>&1
 
@@ -138,38 +142,46 @@ prereq_is_installed "aws" && echo -e "$GOOD aws cli installed" || echo -e "$FAIL
 # t=$EPOCHSECONDS && until grep "You can now run:" "$tmp_dir/aws-install.log" ;
 # do if (( EPOCHSECONDS-t > 2 )); then break; fi; sleep 1; done
 
+echo && echo "[AWS: Sign in as IAM user]" 
+
 aws sts get-caller-identity &>> "$bin_dir/setup.log" && 
-echo && echo -e "$GOOD aws creds validated" || 
-echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
+echo && echo -e "$GOOD aws creds validated" 
 
-  read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
-  if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
+aws sts get-caller-identity &>> "$bin_dir/setup.log" || { 
 
-done && echo && echo "[AWS: Sign in as IAM user]" &&
-while [[ $REPLY =~ ^[Yy]$ ]] ; do
+  echo && until [[ ${REPLY-} =~ ^[YyNn]$ ]] ; do
+ 
+    read -p "Would you like to provide AWS IAM credetials now? (yY/nN): " -n 1 -r < /dev/tty && echo
+    if [[ ! ${REPLY-} =~ ^[YyNn]$ ]] ; then echo "(yY/nN)"; fi
 
-  read -p "Enter aws access key id     :" -r < /dev/tty                            &&
-  AWS_ACCESS_KEY_ID=$REPLY                                                         &&
-  read -p "Enter aws secret access key :" -r < /dev/tty                            &&
-  AWS_SECRET_ACCESS_KEY=$REPLY                                                     &&
-  mkdir -p $HOME/.aws && echo -e "[default]                                        \n\
-  aws_access_key_id=${AWS_ACCESS_KEY_ID}                                           \n\
-  aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials         &&
-  aws sts get-caller-identity &>> "$bin_dir/setup.log"                             &&
-  echo && echo -e "$GOOD aws creds validated"                                      &&
-  aws configure set region "us-east-2"                                             &&
-  aws configure set output "json"                                                  &&
-  aws ecr get-login-password                                                       \
-  --profile default                                                                \
-  --region $(aws configure get region) |                                           \
-  docker login                                                                     \
-  --password-stdin 585953033457.dkr.ecr.$(aws configure get region).amazonaws.com  \
-  --username AWS &>> "$bin_dir/setup.log"                                           &&
-  echo -e "$GOOD docker ecr login verified"                                        && 
-  break
-  read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
+  done 
+  
+  while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-done
+    read -p "Enter aws access key id     :" -r < /dev/tty                             &&
+    AWS_ACCESS_KEY_ID=$REPLY                                                          &&
+    read -p "Enter aws secret access key :" -r < /dev/tty                             &&
+    AWS_SECRET_ACCESS_KEY=$REPLY                                                      &&
+    mkdir -p $HOME/.aws && echo -e "[default]                                         \n\
+    aws_access_key_id=${AWS_ACCESS_KEY_ID}                                            \n\
+    aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" > $HOME/.aws/credentials          &&
+    aws sts get-caller-identity &>> "$bin_dir/setup.log"                              &&
+    echo && echo -e "$GOOD aws creds validated"                                       &&
+    aws configure set region "us-east-2"                                              &&
+    aws configure set output "json"                                                   &&
+    aws ecr get-login-password                                                        \
+    --profile default                                                                 \
+    --region "$(aws configure get region)" |                                          \
+    docker login                                                                      \
+    --password-stdin "585953033457.dkr.ecr.$(aws configure get region).amazonaws.com" \
+    --username AWS &>> "$bin_dir/setup.log"                                           &&
+    echo -e "$GOOD docker ecr login verified"                                         && 
+    break
+    read -p "The provided ID/KEY pair could not be verified. Try again? (yY/nN): " -n 1 -r < /dev/tty && echo
+
+  done
+  
+}
 
 ####################################################################################################################
 
@@ -181,29 +193,29 @@ GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"        
 #GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
 GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
 
-echo && echo "[$GITHUB_FILE unencryption]"
+echo && echo "[$GITHUB_FILE unencryption]" && echo
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty                                                &&
-  wget -qO- $GITHUB_URL | openssl aes-128-cbc -k ${REPLY} -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >      \
-  "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                      &&
-  chmod +x "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                             &&
-  echo -e "\n$COOL deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh and prereqs succefully installed" |            \
+  read -p "Please, enter unencryption password: " -r < /dev/tty && PASS=${REPLY}                                         &&
+  wget -qO- "$GITHUB_URL" | openssl aes-128-cbc -k "${PASS}" -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >    \
+  "$bin_dir/deploy-certscan-docker.sh"                                                                                   &&
+  chmod +x "$bin_dir/deploy-certscan-docker.sh"                                                                          &&
+  echo -e "\n$COOL Prereqs and \033[1;33mdeploy-certscan-docker.sh\033[0m succefully installed" |                        \
   tee -a "$bin_dir/setup.log"                                                                                            &&
   echo -e "\n$COOL To review the log do: \033[1;33mcat $bin_dir/setup.log\033[0m" |                                      \
   tee -a "$bin_dir/setup.log"                                                                                            &&
-  ln -sf "$bin_dir/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                               \
-  "/usr/local/bin/deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh"                                                &&
-  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh\033[0m" | \
+  ln -sf "$bin_dir/deploy-certscan-docker.sh" "/usr/local/bin/deploy-certscan-docker.sh"                                 &&
+  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker.sh\033[0m" |                              \
   tee -a "$bin_dir/setup.log"                                                                                            &&
   break
-  read -p "$GITHUB_FILE Could not be decrypted with the provided password. Try again? (yY/nN)"                           \
-  -n 1 -r < /dev/tty && echo
+  read -p "$GITHUB_FILE Could decrypt it with the provided password. Try again? (yY/nN)"  -n 1 -r < /dev/tty             && 
+  echo
 
 done
 
 ####################################################################################################################
+
 echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-example.conf\033[0m\n" | \
 tee -a "$bin_dir/setup.log"                                                                          &&
 cat > "sbom-example.conf" <<EO3
@@ -244,3 +256,20 @@ emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
 EO3
 
 ###################################################################################################################
+
+## --> VSCODE ######################################################################################################
+
+  # code="code --no-sandbox --user-data-dir $HOME/.vscode"                       &&
+  # prereq_is_installed "code" || {
+  #   mkdir -p "$HOME/.vscode"  && wget -qO "$tmp_dir/vscode.deb"                \
+  #   'https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64' &&
+  #   dpkg -i "$tmp_dir/vscode.deb" 2>&1  > "$tmp_dir/vscode_install.log"        &&
+  #   echo "alias code=\"code --no-sandbox --user-data-dir $HOME/.vscode\"" >> $HOME/.bashrc
+  # }
+
+  # #TODO debug
+  # prereq_is_installed "code" && echo "code" || echo "no code"
+
+  #Unistall
+  # dpkg --purge code
+
