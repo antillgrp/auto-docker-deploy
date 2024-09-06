@@ -5,13 +5,15 @@
 # wget -qO- https://tinyurl.com/setup-1-0-0-sh | sudo bash
 
 # shellcheck disable=SC2034
-VERSION=1.0.0 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
+VERSION=1.0.2 # TODO integrate https://github.com/fmahnke/shell-semver/blob/master/increment_version.sh
 
 #set -eu -o pipefail # fail on error and report it, debug all lines
 #sudo -n true # -n, --non-interactive         non-interactive mode, no prompts are used
 
 # shellcheck disable=SC2241
 test $? -eq 0 || exit 1 "you should have sudo/root  privilege to run this script"
+
+#region system/os customization
 
 prereq_is_installed(){
   [[ -z $(which "$1") ]] && return 1
@@ -62,6 +64,10 @@ echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
 tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
 chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw" 
 echo -e "$COOL ${SUDO_USER} configured for non password sudo"
+
+#endregion
+
+#region install prereqs
 
 echo && echo "[Initialization]" && echo
 bin_dir="/opt/certscan/bin" && mkdir -p $bin_dir    &&
@@ -185,12 +191,17 @@ aws sts get-caller-identity &>> "$bin_dir/setup.log" || {
 
 ####################################################################################################################
 
+#endregion
+
 GITHUB_LATEST_VERSION=$(
   curl -L -s -H 'Accept: application/json' https://github.com/antillgrp/auto-docker-deploy/releases/latest |            \
   sed -e 's/.*"tag_name":"\([^"]*\)".*/\1/'
 )                                                                                                                       &&
-GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                                &&
+
+#GITHUB_FILE="deploy-certscan-docker-${GITHUB_LATEST_VERSION//v/}.sh.aes"                                                &&
 #GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/releases/download/${GITHUB_LATEST_VERSION}/${GITHUB_FILE}" &&
+
+GITHUB_FILE="deploy-certscan-docker-${VERSION}.sh.aes"                                                &&
 GITHUB_URL="https://github.com/antillgrp/auto-docker-deploy/raw/main/${GITHUB_FILE}"                                    &&
 
 echo && echo "[$GITHUB_FILE unencryption]" && echo
