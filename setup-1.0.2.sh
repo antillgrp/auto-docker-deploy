@@ -208,28 +208,27 @@ echo && echo "[$GITHUB_FILE unencryption]" && echo
 
 REPLY=y && while [[ $REPLY =~ ^[Yy]$ ]] ; do
 
-  read -p "Please, enter unencryption password: " -r < /dev/tty && PASS=${REPLY}                                         &&
-  wget -qO- "$GITHUB_URL" | openssl aes-128-cbc -k "${PASS}" -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" >    \
-  "$bin_dir/deploy-certscan-docker.sh"                                                                                   &&
-  chmod +x "$bin_dir/deploy-certscan-docker.sh"                                                                          &&
-  echo -e "\n$COOL Prereqs and \033[1;33mdeploy-certscan-docker.sh\033[0m succefully installed" |                        \
-  tee -a "$bin_dir/setup.log"                                                                                            &&
-  echo -e "\n$COOL To review the log do: \033[1;33mcat $bin_dir/setup.log\033[0m" |                                      \
-  tee -a "$bin_dir/setup.log"                                                                                            &&
-  ln -sf "$bin_dir/deploy-certscan-docker.sh" "/usr/local/bin/deploy-certscan-docker.sh"                                 &&
-  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker.sh\033[0m" |                              \
-  tee -a "$bin_dir/setup.log"                                                                                            &&
+  read -p "Please, enter unencryption password: " -r < /dev/tty && PASS=${REPLY} && wget -qO- "$GITHUB_URL" |                     \
+  openssl aes-128-cbc -k "${PASS}" -d -pbkdf2 -iter 100 -a -salt  2>> "$bin_dir/setup.log" > "$bin_dir/deploy-certscan-docker.sh" &&
+  chmod +x "$bin_dir/deploy-certscan-docker.sh"                                                                                   &&
+  echo -e "\n$COOL Prereqs and \033[1;33mdeploy-certscan-docker.sh\033[0m succefully installed" |                                 \
+  tee -a "$bin_dir/setup.log"                                                                                                     &&
+  echo -e "\n$COOL To review the log do: \033[1;33mcat $bin_dir/setup.log\033[0m" |                                               \
+  tee -a "$bin_dir/setup.log"                                                                                                     &&
+  ln -sf "$bin_dir/deploy-certscan-docker.sh" "/usr/local/bin/deploy-certscan-docker.sh"                                          &&
+  echo -e "\n$COOL To start using it do: \033[1;33msudo deploy-certscan-docker.sh\033[0m" |                                       \
+  tee -a "$bin_dir/setup.log"                                                                                                     &&
   break
-  read -p "$GITHUB_FILE Could decrypt it with the provided password. Try again? (yY/nN)"  -n 1 -r < /dev/tty             && 
+  read -p "$GITHUB_FILE Could decrypt it with the provided password. Try again? (yY/nN)"  -n 1 -r < /dev/tty                      && 
   echo
 
 done
 
 ####################################################################################################################
 
-echo -e "\n$COOL A sbom.conf example can be found at: \033[1;33m$(pwd)/sbom-example.conf\033[0m\n" | \
+echo -e "\n$COOL A sbom.conf template can be found at: \033[1;33m$(pwd)/sbom-template.conf\033[0m\n" | \
 tee -a "$bin_dir/setup.log"                                                                          &&
-cat > "sbom-example.conf" <<EO3
+cat > "sbom-template.conf" <<EO3
 tennant=oman
 cs-version=4.3.3
 domain=wajajah.certscan.rop.gov.internal
