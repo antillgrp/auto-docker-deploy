@@ -50,6 +50,13 @@ FAIL="\033[1;31m☒\033[0m"
 COOL="\033[1;33m😎\033[0m"
 
 echo && echo "[System customization]" && echo
+
+#https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
+echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
+tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
+chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw" 
+echo -e "$COOL ${SUDO_USER} configured for non password sudo" 
+
 #set prompts 
 grep -qi '\\n\\$\ ' /home/"${SUDO_USER}"/.bashrc || 
 sed 's|\\$\ |\\n\\$\ |' -i /home/"${SUDO_USER}"/.bashrc
@@ -59,11 +66,14 @@ grep -qi '\\n\\$\ ' /root/.bashrc                ||
 sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
 echo -e "$COOL root's prompt changed"
 
-#https://www.cyberciti.biz/faq/linux-unix-running-sudo-command-without-a-password/
-echo "${SUDO_USER} ALL=(ALL) NOPASSWD:ALL"         | \
-tee "/etc/sudoers.d/${SUDO_USER}-nopw" &>/dev/null && 
-chmod 440 "/etc/sudoers.d/${SUDO_USER}-nopw" 
-echo -e "$COOL ${SUDO_USER} configured for non password sudo"
+grep -qi 'alias docker' /home/"${SUDO_USER}"/.bashrc ||
+echo 'alias docker="sudo docker"' && echo -e "$COOL [alias docker] added"
+
+grep -qi 'alias lazydocker' /home/"${SUDO_USER}"/.bashrc ||
+echo 'alias lazydocker="sudo lazydocker"' && echo -e "$COOL [alias lazydocker] added"
+
+grep -qi 'alias lazydocker' /home/"${SUDO_USER}"/.bashrc ||
+echo 'alias lazydocker="sudo lazydocker"' && echo -e "$COOL [alias lazydocker] added"
 
 #endregion
 
