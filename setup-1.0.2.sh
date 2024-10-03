@@ -72,8 +72,8 @@ echo 'alias docker="sudo docker"' && echo -e "$COOL [alias docker] added"
 grep -qi 'alias lazydocker' /home/"${SUDO_USER}"/.bashrc ||
 echo 'alias lazydocker="sudo lazydocker"' && echo -e "$COOL [alias lazydocker] added"
 
-grep -qi 'alias lazydocker' /home/"${SUDO_USER}"/.bashrc ||
-echo 'alias lazydocker="sudo lazydocker"' && echo -e "$COOL [alias lazydocker] added"
+grep -qi 'alias deploy-certscan-docker' /home/"${SUDO_USER}"/.bashrc ||
+echo 'alias deploy-certscan-docker="sudo deploy-certscan-docker.sh"' && echo -e "$COOL [alias deploy-certscan-docker] added"
 
 #endregion
 
