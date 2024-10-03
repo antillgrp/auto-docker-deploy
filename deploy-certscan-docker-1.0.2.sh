@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
+# sudo date --set "2 Oct 2024 7:09:00"
 # ./deploy-certscan-docker-1.0.2.sh -e && git add . && git commit -m "sync: $(date)" && git push
+# sudo cat ./deploy-certscan-docker-1.0.2.sh | sudo tee /opt/certscan/bin/deploy-certscan-docker.sh &>/dev/null
 
 #region COMMON ##########################################################################################################################
 
@@ -8,7 +10,8 @@ set -Eeuo pipefail;
 
 # https://stackoverflow.com/a/42956288
 # script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)
-script_dir="$(dirname "$(dirname "$(readlink -f "$0")")")"
+declare -g SCRIPT_HOME='' && SCRIPT_HOME="$(dirname "$(dirname "$(readlink -f "$0")")")"
+declare -g SCRIPT_LOG='' && SCRIPT_LOG="$SCRIPT_HOME/bin/deploy-certscan-docker-$(date '+[%y%m%d][%H%M]').log"
 
 setup_colors() { # https://stackoverflow.com/a/72652446
   if [[ -t 2 ]] && [[ -z "${NO_COLOR-}" ]] && [[ "${TERM-}" != "dumb" ]]; then
@@ -30,9 +33,9 @@ setup_colors() { # https://stackoverflow.com/a/72652446
 
 setup_colors
 
-msg() { echo >&2 -e "${*}"; }
+msg() { echo -e "${*}" | tee -a $SCRIPT_LOG >&2; }
 
-msg_success() { sleep 1s && msg "${GREEN}[\xE2\x9C\x94]${NOFORMAT} ${*}"; }
+msg_success() { sleep 0s && msg "${GREEN}[\xE2\x9C\x94]${NOFORMAT} ${*}"; }
 
 msg_important() { msg "${GREEN}[! IMPORTANT]${NOFORMAT} ${*}"; }
 
@@ -142,21 +145,30 @@ docker_cleanup(){
 
 #region DATA ############################################################################################################################
 
+declare -g IP_ADDRESS=''
+
 declare -g S3_BUCKET='s2global-test-bucket'
-declare -g IP_ADDRESS && IP_ADDRESS="$(ip route get 8.8.8.8 | head -1 | cut -d' ' -f7)"
-declare -g INSTALL_TAG && INSTALL_TAG="dev$(date +"%m%y")"
+declare -g INSTALL_TAG && INSTALL_TAG="dev"
 declare -g PREFIX=''
 declare -g WORKING_DIR=''
 declare -g VOLUMES_FOLDER='' 
 declare -g COMPOSE_FILE=''  
 
 populateGlobalVar(){
-
-  PREFIX="cs${sbom_config_map[default.cs-version]}_${sbom_config_map[default.tennant]}"
-  WORKING_DIR="${script_dir}/${PREFIX}_${INSTALL_TAG}";
-  COMPOSE_FILE="${WORKING_DIR}/${PREFIX}_compose.yaml"
+  
+  SCRIPT_HOME="$(dirname "$(dirname "$(readlink -f "$0")")")"
+  
+  #TODO PICK
+  IP_ADDRESS="$(ip route get 8.8.8.8 | head -1 | cut -d' ' -f7)"
+  
+  PREFIX="certscan_${sbom_config_map[default.tennant]}"
+  WORKING_DIR="${SCRIPT_HOME}/${PREFIX}_store_${INSTALL_TAG}"; #script_dir
+  COMPOSE_FILE="${WORKING_DIR}/${sbom_config_map[default.tennant]}_compose.yaml"
+  
+  SCRIPT_LOG="$WORKING_DIR/deployment_logs/deploy-certscan-docker-${sbom_config_map[default.tennant]}-${INSTALL_TAG}-$(date '+D%y%m%dT%H%M').log"
 
 }
+
 
 #declare syntax below (-gA) only works with bash 4.2 and higher
 unset sbom_config_map; declare -gA sbom_config_map=(); 
@@ -207,17 +219,16 @@ createFoldersAndCompose(){
     printf '%s' "${sbom_config_map[default.domain]}" || 
     printf '%s' "portal.certscan.net"
   )
-  
-  mkdir -p "$WORKING_DIR/deployment_logs" && msg && msg_success "Created stack folder [$WORKING_DIR] ..."
 
-  local RKIT_ZIP_FILE="${WORKING_DIR}/${PREFIX}_relkit.zip" && [ ! -f "$RKIT_ZIP_FILE" ]       && 
-  dld_s3_obj "$S3_BUCKET" "${sbom_config_map[default.rel-kit-path]}" "$RKIT_ZIP_FILE"  
-  [ -f "$RKIT_ZIP_FILE" ] && msg_success "Downloaded release kit (zip) with configs files ..."                    
+  local RKIT="${PREFIX}_${sbom_config_map[default.cs-version]}_relkit"
   
-  local RKIT_FOLDER="${WORKING_DIR}/${PREFIX}_relkit" && [ ! -d "$RKIT_FOLDER" ]               &&
-  mkdir -p "$RKIT_FOLDER"                                                                      &&
-  busybox unzip "$RKIT_ZIP_FILE" -o -d "$RKIT_FOLDER"  > "$WORKING_DIR/deployment_logs/${PREFIX}_relkit_unzip.log"
-  [ -d "$RKIT_FOLDER" ] && msg_success "Uncompresed release kit (zip) file ..."
+  local RKIT_ZIP_FILE="${WORKING_DIR}/${RKIT}.zip" && [ ! -f "$RKIT_ZIP_FILE" ] && 
+  dld_s3_obj "$S3_BUCKET" "${sbom_config_map[default.rel-kit-path]}" "$RKIT_ZIP_FILE"  
+  [ -f "$RKIT_ZIP_FILE" ] && msg_success "Downloaded release kit (zip) with configs files ..."
+  
+  local RKIT_FOLDER="${WORKING_DIR}/${RKIT}" && [ ! -d "$RKIT_FOLDER" ] && mkdir -p "$RKIT_FOLDER" &&
+  busybox unzip "$RKIT_ZIP_FILE" -o -d "$RKIT_FOLDER"  > "$WORKING_DIR/deployment_logs/${RKIT}_unzip.log"
+  [ -n "$(ls -A "$RKIT_FOLDER")" ] && msg_success "Uncompresed release kit (zip) file ..."
 
   VOLUMES_FOLDER="${WORKING_DIR}/${PREFIX}_dkr_volumes" 
   [ ! -d "${VOLUMES_FOLDER}" ] && mkdir -p "${VOLUMES_FOLDER}"
@@ -231,10 +242,13 @@ createFoldersAndCompose(){
   msg_success "Copied haproxy configs from release kit to volumes folder ..."
 
 ### COMPOSE
-
-### NETWORKS AND SERVICES
 msg_success "Creating docker compose file from template at: [ $COMPOSE_FILE ]"
 
+##################################################################################################
+##### NETWORKS AND SERVICES ######################################################################
+##################################################################################################
+
+#region
 tee "$COMPOSE_FILE" <<EOF > /dev/null 
 networks:
   cs_backend:
@@ -242,12 +256,15 @@ networks:
 services: 
   #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
 EOF
+#endregion
 
 ##################################################################################################
 ##### THIRD-PARTY ################################################################################
 ##################################################################################################
 
-### REDIS
+#region
+
+#region ## REDIS ##
 [ -n "${sbom_config_map[third-party.redis]-}" ] && {
 
   msg
@@ -262,15 +279,15 @@ EOF
   ####
   redis:
     image: "${sbom_config_map[third-party.redis]}"
-    container_name: redis
+    container_name: 00-redis
     restart: always
     environment:
-      REDIS_PASSWORD: 'solutions@123'
+      REDIS_ARGS: "--requirepass solutions@123 --appendonly yes"
     volumes:
       - "${VOLUMES_FOLDER}/dckr-vol-redis:/data"
       - "/etc/timezone:/etc/timezone:ro" 
       - "/etc/localtime:/etc/localtime:ro"
-    command: /bin/sh -c 'redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}'
+    #command: /bin/sh -c 'redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}'
     networks:
       - cs_backend
     ports:
@@ -281,15 +298,36 @@ EOF
       timeout: 5s
       retries: 3
   ####
+  ####
+  redisinsight:
+    container_name: 01-redis-mgmt-http-6380
+    image: redis/redisinsight:latest
+    user: 0:0
+    environment:
+      RI_STDOUT_LOGGER: "true"
+    ports:
+      - '6380:5540'
+    volumes:
+      - ${VOLUMES_FOLDER}/redisinsight:/data
+    networks:
+      - cs_backend
+    healthcheck:
+      test: ["CMD-SHELL", 'wget --no-verbose --tries=1 --spider 127.0.0.1:5540/api/health/ || exit 1',]
+      start_period: 160s
+      interval: 20s
+      timeout: 10s
+      retries: 3
+  ###
 EOF
 msg_success "[$(pad " redis" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
 
-### RABBITMQ
+#region ## RABBITMQ ##
 [ -n "${sbom_config_map[third-party.rabbitmq]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
   #### 
   rabbitmq:
     image: "${sbom_config_map[third-party.rabbitmq]}"
-    container_name: rabbitmq
+    container_name: 02-rabbitmq-mgmt-http-5673
     restart: always
     hostname: rabbitmq-container
     ports:
@@ -309,15 +347,16 @@ msg_success "[$(pad " redis" 20)] added to compose: [ $COMPOSE_FILE ]"
   ####
 EOF
 msg_success "[$(pad " rabbitmq" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
 
 #TODO POSTGRES 12 TO POSTGRES 16 migration job
 
-### POSTGRES
+#region ## POSTGRES ##
 [ -n "${sbom_config_map[third-party.postgres]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
   ####
   postgres:
     image: "${sbom_config_map[third-party.postgres]}"
-    container_name: postgres
+    container_name: 03-postgres
     restart: always
     #user: 70:70
     ports:
@@ -352,10 +391,43 @@ msg_success "[$(pad " rabbitmq" 20)] added to compose: [ $COMPOSE_FILE ]"
       timeout: 5s
       retries: 5
   ####
+  ####
+  pgadmin:
+    container_name: 04-postgres-mgmt-http-5433
+    image: dpage/pgadmin4
+    user: 0:0 
+    ports:
+      - 5433:80
+    environment:
+      PGADMIN_DEFAULT_EMAIL: superadmin@certscan.net
+      PGADMIN_DEFAULT_PASSWORD: Test@123
+      PGADMIN_SERVER_JSON_FILE: "/pgadmin4/servers.json"
+    volumes:
+      - "${VOLUMES_FOLDER}/pgadmin-db-backups:/mnt/backups"
+    networks:
+      - cs_backend
+    entrypoint: 
+      - sh
+      - -c
+      - |
+        cat <<EO1 > /pgadmin4/servers.json
+        { "Servers": { "1": { "Group": "Servers", "Name": "postgres", "Host": "postgres", "Port": 5432, "MaintenanceDB": "postgres", "Username": "postgres", "Password": "postgres" } } }
+        EO1
+        #chown pgadmin:root /pgadmin4/servers.json
+        #chmod 777 /pgadmin4/servers.json        
+        /entrypoint.sh
+    healthcheck:
+      test: ["CMD-SHELL", 'wget --no-verbose --tries=1 --spider 127.0.0.1/misc/ping || exit 1',] 
+      start_period: 160s # 'start_period' debe ser al menos 140 s; de lo contrario, aparecerá el siguiente error o advertencia: El pid de trabajador [<>] ha finalizado debido a la señal 9
+      interval: 20s
+      timeout: 10s
+      retries: 3
+  ####
 EOF
 msg_success "[$(pad " postgres" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
 
-### SUPERSET
+#region ## SUPERSET ##
 [ -n "${sbom_config_map[third-party.superset]-}" ] && {
 
   mkdir -p "${VOLUMES_FOLDER}/superset_home/scripts" "${VOLUMES_FOLDER}/logs/superset"                        &&
@@ -368,7 +440,7 @@ msg_success "[$(pad " postgres" 20)] added to compose: [ $COMPOSE_FILE ]"
   ####
   superset:  
     image: "${sbom_config_map[third-party.superset]}" 
-    container_name: reports-pt-8088
+    container_name: 05-reports-pt-8088
     volumes:
       - "${VOLUMES_FOLDER}/logs/superset:/app/superset_home/logs:rw"
       - "${VOLUMES_FOLDER}/superset_home:/app/superset_home/:rw"
@@ -392,13 +464,532 @@ msg_success "[$(pad " postgres" 20)] added to compose: [ $COMPOSE_FILE ]"
   ####
 EOF
 msg_success "[$(pad " superset" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
 
-### MONGODB
-[ -n "${sbom_config_map[third-party.mongodb]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+#endregion 
+
+##################################################################################################
+##### CERTSCAN ###################################################################################
+##################################################################################################
+
+#region
+
+#region ## FLYWAY ##
+[ -n "${sbom_config_map[certscan.flyway]-}" ] && {
+  msg
+  msg '############################################################################################'
+  msg '#### CERTSCAN SUB-STACK ####################################################################'
+  msg '############################################################################################'
+  msg
+} && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
+  ####
+  flyway:
+    image: "${sbom_config_map[certscan.flyway]}"
+    container_name: 06-db-migration-flyway
+    environment:
+      DATABASE_SCHEMA_LIST: "${TENNANT}"
+      DATABASE_URL: postgres
+      DATABASE_LIST: certscandb
+      FLYWAY_USER: postgres
+      FLYWAY_PASSWORD: postgres
+      FLYWAY_IGNORiE_MIGRATION_PATTERNS: "*:ignored"
+    volumes:
+      - "/etc/timezone:/etc/timezone:ro" 
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    depends_on:
+      - postgres
+    # entrypoint:
+    #   - /bin/bash
+    #   - -c
+    #   - |
+    #     sleep 10000
+  ####
+EOF
+msg_success "[$(pad " flyway" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## DISCOVERYSERVICE ## 
+[ -n "${sbom_config_map[certscan.discoveryservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  discovery-service:
+    image: "${sbom_config_map[certscan.discoveryservice]}"
+    container_name: 07-discovery-service
+    restart: always
+    environment:
+      SERVER_HOME: /home/Server
+    volumes: 
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    ports:
+      - "8761:8761"
+    healthcheck: 
+      test: ["CMD-SHELL", 'wget --no-verbose --tries=1 --spider 127.0.0.1:8761/actuator/health || exit 1',]
+      start_period: 20s
+      interval: 20s
+      timeout: 10s
+      retries: 20
+  #### 
+EOF
+msg_success "[$(pad " discovery-service" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## CCHELP ##
+[ -n "${sbom_config_map[certscan.cchelp]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  cchelp:
+    image: "${sbom_config_map[certscan.cchelp]}"
+    container_name: 08-cchelp
+    restart: always
+    volumes:
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+    networks:
+      - cs_backend
+    ports:
+      - "8040:8040"
+    healthcheck: 
+      test: wget -S http://127.0.0.1:8040/cchelp 2>&1 >/dev/null | grep -q "200 OK" || exit 1
+      start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " cchelp" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## CONFIGSERVER ##
+[ -n "${sbom_config_map[certscan.configserver]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  configserver:
+    image: "${sbom_config_map[certscan.configserver]}"
+    container_name: 09-configserver
+    restart: always
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SERVER_HOME: /home/Server
+      #TZ: Asia/Kolkata
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"    
+    networks:
+      - cs_backend
+    ports:
+      - "8010:8010"
+    healthcheck: 
+      test: wget -S http://127.0.0.1:8010/configserver 2>&1 >/dev/null | grep -q "200 OK" || exit 1
+      #start_period: 20s
+      interval: 20s
+      timeout: 10s
+      retries: 20
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  #### 
+EOF
+msg_success "[$(pad " configserver" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## APPLICATIONCONFIGURATION ##
+[ -n "${sbom_config_map[certscan.appconfiguration]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  applicationconfiguration:
+    image: "${sbom_config_map[certscan.appconfiguration]}"
+    container_name: 10-applicationconfiguration
+    restart: always
+    environment:
+      SERVER_HOME: /home/Server
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend   
+    ports:
+      - "9010:9010"
+    healthcheck: 
+      test: wget -S http://127.0.0.1:9010/applicationconfiguration 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####  
+EOF
+msg_success "[$(pad " appconfiguration" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## CONVERTER ##
+[ -n "${sbom_config_map[certscan.converter]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  converter:
+    image: "${sbom_config_map[certscan.converter]}"
+    container_name: 11-converter
+    restart: always
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SERVER_HOME: /home/Server
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "${VOLUMES_FOLDER}/archive:/home/Output:rw"
+      - "${VOLUMES_FOLDER}/archive:/app/data:rw"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    ports:
+      - "8090:8089"
+      - "7090:7090"
+    healthcheck: 
+      test: curl -vvv http://127.0.0.1:8089/converter/actuator/health 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " converter" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## CSVIEW ##
+[ -n "${sbom_config_map[certscan.csview]-}" ] && {
+
+  grep -qi "${IP_ADDRESS} ${DOMAIN}" /etc/hosts ||
+  printf '%s' "\n${IP_ADDRESS} ${DOMAIN}\n" &>> /etc/hosts
+  msg_success "[$(pad " csview" 20)] domain name [${DOMAIN}] added to local host file ..." 
+
+  msg ''
+  msg_important \
+  "FOR REMOTE ACCESS: Please add entry \n☛ ${BGREEN}( ${IP_ADDRESS} ${DOMAIN} )${NOFORMAT}" \
+  "\nto dns server or host file, so [Certscan] can be accessed at:" \
+  "\n☛ ${UCYAN}https://${DOMAIN}/csview${NOFORMAT}"
+  msg ''
+
+} && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  csview:
+    image: "${sbom_config_map[certscan.csview]}"
+    container_name: 12-csview
+    restart: always
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SERVER_HOME: /home/Server
+      # TZ: Asia/Kolkata
+    volumes:
+      - "${VOLUMES_FOLDER}/archive:/home/Output:rw"
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro" 
+      - "/etc/localtime:/etc/localtime:ro" 
+    networks:
+      cs_backend:
+        aliases:
+          - "${DOMAIN}"  
+    ports:
+      - "8080:8080"
+      - "9001:9001"
+    healthcheck:
+      test: wget -S http://127.0.0.1:8080/csview 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " csview" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## WORKFLOW ##
+[ -n "${sbom_config_map[certscan.workflow]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  workflow:
+    image: "${sbom_config_map[certscan.workflow]}"
+    container_name: 13-workflow
+    restart: always
+    environment:
+      SERVER_HOME: /home/Server
+      #TZ: Asia/Kolkata
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      cs_backend:
+        aliases:
+          - "${DOMAIN}"  
+    ports:
+      - "8030"
+    healthcheck: 
+      test: wget -S http://127.0.0.1:8030/workflow 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " workflow" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## WORKFLOWENGINE ##
+[ -n "${sbom_config_map[certscan.workflowengine]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  workflowengine:
+    image: "${sbom_config_map[certscan.workflowengine]}"
+    container_name: 14-workflowengine
+    restart: always
+    environment:
+      SERVER_HOME: /home/Server
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "${VOLUMES_FOLDER}/logs:/home/workflowengine/logs:rw"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    ports:
+      - "9081:9081"
+    healthcheck: # /actuator/health
+      test: wget -S http://127.0.0.1:9081/workflowEngine/actuator/health 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20 
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " workflowengine" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## USERMANEGEMENT ##
+[ -n "${sbom_config_map[certscan.usermanagement]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
+  ####
+  usermanagement:
+    image: "${sbom_config_map[certscan.usermanagement]}"
+    container_name: 15-usermanagement
+    restart: always
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    environment:
+      SERVER_HOME: /home/Server
+      #TZ: Asia/Kolkata
+    networks:
+      - cs_backend
+    ports:
+      - "9047:9047"
+    healthcheck: 
+      test: wget -S http://127.0.0.1:9047/usermanagement 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20 
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " usermanagement" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## ASSIGNMENTSERVICE ##
+[ -n "${sbom_config_map[certscan.assignmentservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  assignmentservice:
+    image: "${sbom_config_map[certscan.assignmentservice]}"
+    container_name: 16-assignmentservice
+    restart: always
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SERVER_HOME: /home/Server
+      #TZ: Asia/Kolkata
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro" 
+      - "/etc/localtime:/etc/localtime:ro" 
+    ports:
+      - "8099:8099"
+    healthcheck: 
+      test:  wget -S http://127.0.0.1:8099/assignmentservice/actuator/health 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20 
+    networks:
+      - cs_backend
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " assignmentservice" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## EVENT ##
+[ -n "${sbom_config_map[certscan.event]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  event:
+    image: "${sbom_config_map[certscan.event]}"
+    container_name: 17-event
+    restart: always
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SERVER_HOME: /home/Server
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    ports:
+      - "8060:8060"
+    healthcheck: 
+      test:  wget -S http://127.0.0.1:8060/event 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
+      #start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 20 
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " event" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## IRSERVISE ## 
+[ -n "${sbom_config_map[certscan.irservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  irservice:
+    image: ${sbom_config_map[certscan.irservice]}
+    container_name: 18-irservice
+    restart: always
+    environment:
+      SERVER_HOME: /home/Server
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "${VOLUMES_FOLDER}/logs:/home/irservice/logs:rw"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    ports:                                                                                    
+      - 9099:9099                                                                           
+    healthcheck:                                                                              
+      test: wget -S http://127.0.0.1:9099/irservice 2>&1 >/dev/null | grep -q "200 OK" || exit 1  
+      interval: 20s                                                                           
+      timeout: 5s                                                                             
+      retries: 5
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+  ####
+EOF
+msg_success "[$(pad " irservice" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
+
+#region ## MANIFESTSERVICE ##
+[ -n "${sbom_config_map[certscan.manifestservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
+  ####
+  manifestservice:
+    image: ${sbom_config_map[certscan.manifestservice]}
+    container_name: 19-manifest
+    restart: always
+    environment:
+      SERVER_HOME: /home/Server
+      MONGODBHOST: mongodb
+      MONGODBPORT: 27017
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_DATABASE: certscan
+      #TZ: Asia/Kolkata
+    volumes:
+      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
+      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
+      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - cs_backend
+    ports:
+      - "8989:8989"
+    # healthcheck:
+    #   test: wget -S http://127.0.0.1:8989/manifest 2>&1 >/dev/null | grep -q \"200 OK\" || exit 1
+    #   interval: 20s
+    #   timeout: 5s
+    #   retries: 5
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+  ####
   ####
   mongodb: 
-    image: "${sbom_config_map[third-party.mongodb]}"
-    container_name: mongodb
+    image: "mongo:latest"
+    container_name: 20-manifestdb-mongodb
     restart: always
     volumes:
       - "${VOLUMES_FOLDER}/dckr-vol-mongo:/data/db:rw"
@@ -422,11 +1013,35 @@ msg_success "[$(pad " superset" 20)] added to compose: [ $COMPOSE_FILE ]"
       retries: 3
       start_period: 20s
   ####
+  ####
+  mongo-mgmt:
+    image: mongo-express # TODO <-- move to conf file third party
+    container_name: 21-manifestdb-mongodb-mgmt-http-27018
+    environment:
+      ME_CONFIG_MONGODB_URL: "mongodb://admin:admin@mongodb:27017/admin?ssl=false"
+    networks:
+      - cs_backend
+    ports:
+      - 27018:8081
+    healthcheck:
+      test: ["CMD-SHELL", 'wget --no-verbose --tries=1 --spider 127.0.0.1:8081/status || exit 1',] 
+      start_period: 160s 
+      interval: 20s
+      timeout: 10s
+      retries: 3
+  ####
 EOF
-msg_success "[$(pad " mongodb" 20)] added to compose: [ $COMPOSE_FILE ]"
+msg_success "[$(pad " manifestservice" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
 
-### HAPROXY
-[ -n "${sbom_config_map[third-party.haproxy]-}" ] && {
+#endregion
+
+##################################################################################################
+##### HAPROXY ###################################################################################
+##################################################################################################
+
+#region ## HAPROXY ##
+[ -n "${sbom_config_map[haproxy.haproxy]-}" ] && {
   
   grep -qi "${IP_ADDRESS} ${DOMAIN}" /etc/hosts ||
   printf '%s' "\n${IP_ADDRESS} ${DOMAIN}\n" &>> /etc/hosts
@@ -449,8 +1064,8 @@ msg_success "[$(pad " mongodb" 20)] added to compose: [ $COMPOSE_FILE ]"
 } && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
   ####
   haproxy:
-    image: "${sbom_config_map[third-party.haproxy]}"
-    container_name: haproxy
+    image: "${sbom_config_map[haproxy.haproxy]}"
+    container_name: 22-haproxy
     restart: always
     user: 99:99 # haproxy:x:99:99:Linux User,,,:/var/lib/haproxy:/sbin/nologin
     volumes:
@@ -491,796 +1106,7 @@ msg_success "[$(pad " mongodb" 20)] added to compose: [ $COMPOSE_FILE ]"
   ####
 EOF
 msg_success "[$(pad " haproxy" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-##################################################################################################
-##### CERTSCAN ###################################################################################
-##################################################################################################
-
-### FLYWAY
-[ -n "${sbom_config_map[certscan.flyway]-}" ] && {
-  msg
-  msg '############################################################################################'
-  msg '#### CERTSCAN SUB-STACK ####################################################################'
-  msg '############################################################################################'
-  msg
-} && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
-  ####
-  flyway:
-    image: "${sbom_config_map[certscan.flyway]}"
-    container_name: db-migration-flyway
-    environment:
-      DATABASE_SCHEMA_LIST: "${TENNANT}"
-      DATABASE_URL: postgres
-      DATABASE_LIST: certscandb
-      FLYWAY_USER: postgres
-      FLYWAY_PASSWORD: postgres
-      FLYWAY_IGNORiE_MIGRATION_PATTERNS: "*:ignored"
-    volumes:
-      - "/etc/timezone:/etc/timezone:ro" 
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    depends_on:
-      - postgres
-    # entrypoint:
-    #   - /bin/bash
-    #   - -c
-    #   - |
-    #     sleep 10000
-  ####
-EOF
-msg_success "[$(pad " flyway" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### DISCOVERYSERVICE
-[ -n "${sbom_config_map[certscan.discoveryservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  discovery-service:
-    image: "${sbom_config_map[certscan.discoveryservice]}"
-    container_name: discovery-service
-    restart: always
-    environment:
-      SERVER_HOME: /home/Server
-    volumes: 
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    ports:
-      - "8761:8761"
-    healthcheck: 
-      test: ["CMD-SHELL", 'wget --no-verbose --tries=1 --spider 127.0.0.1:8761/actuator/health || exit 1',]
-      start_period: 20s
-      interval: 20s
-      timeout: 10s
-      retries: 20
-  #### 
-EOF
-msg_success "[$(pad " discovery-service" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### CCHELP
-[ -n "${sbom_config_map[certscan.cchelp]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  cchelp:
-    image: "${sbom_config_map[certscan.cchelp]}"
-    container_name: cchelp
-    restart: always
-    volumes:
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-    networks:
-      - cs_backend
-    ports:
-      - "8040:8040"
-    healthcheck: 
-      test: wget -S http://127.0.0.1:8040/cchelp 2>&1 >/dev/null | grep -q "200 OK" || exit 1
-      start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " cchelp" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### CONFIGSERVER
-[ -n "${sbom_config_map[certscan.configserver]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  configserver:
-    image: "${sbom_config_map[certscan.configserver]}"
-    container_name: configserver
-    restart: always
-    environment:
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SERVER_HOME: /home/Server
-      #TZ: Asia/Kolkata
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"    
-    networks:
-      - cs_backend
-    ports:
-      - "8010:8010"
-    healthcheck: 
-      test: wget -S http://127.0.0.1:8010/configserver 2>&1 >/dev/null | grep -q "200 OK" || exit 1
-      #start_period: 20s
-      interval: 20s
-      timeout: 10s
-      retries: 20
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  #### 
-EOF
-msg_success "[$(pad " configserver" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### APPLICATIONCONFIGURATION
-[ -n "${sbom_config_map[certscan.appconfiguration]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  appconfiguration:
-    image: "${sbom_config_map[certscan.appconfiguration]}"
-    container_name: applicationconfiguration
-    restart: always
-    environment:
-      SERVER_HOME: /home/Server
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend   
-    ports:
-      - "9010:9010"
-    healthcheck: 
-      test: wget -S http://127.0.0.1:9010/applicationconfiguration 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####  
-EOF
-msg_success "[$(pad " appconfiguration" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### CONVERTER
-[ -n "${sbom_config_map[certscan.converter]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  converter:
-    image: "${sbom_config_map[certscan.converter]}"
-    container_name: converter
-    restart: always
-    environment:
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SERVER_HOME: /home/Server
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "${VOLUMES_FOLDER}/archive:/home/Output:rw"
-      - "${VOLUMES_FOLDER}/archive:/app/data:rw"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    ports:
-      - "8090:8089"
-      - "7090:7090"
-    healthcheck: 
-      test: curl -vvv http://127.0.0.1:8089/converter/actuator/health 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " converter" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### CSVIEW
-[ -n "${sbom_config_map[certscan.csview]-}" ] && {
-
-  grep -qi "${IP_ADDRESS} ${DOMAIN}" /etc/hosts ||
-  printf '%s' "\n${IP_ADDRESS} ${DOMAIN}\n" &>> /etc/hosts
-  msg_success "[$(pad " csview" 20)] domain name [${DOMAIN}] added to local host file ..." 
-
-  msg ''
-  msg_important \
-  "FOR REMOTE ACCESS: Please add entry \n☛ ${BGREEN}( ${IP_ADDRESS} ${DOMAIN} )${NOFORMAT}" \
-  "\nto dns server or host file, so [Certscan] can be accessed at:" \
-  "\n☛ ${UCYAN}https://${DOMAIN}/csview${NOFORMAT}"
-  msg ''
-
-} && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  csview:
-    image: "${sbom_config_map[certscan.csview]}"
-    container_name: csview
-    restart: always
-    environment:
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SERVER_HOME: /home/Server
-      # TZ: Asia/Kolkata
-    volumes:
-      - "${VOLUMES_FOLDER}/archive:/home/Output:rw"
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro" 
-      - "/etc/localtime:/etc/localtime:ro" 
-    networks:
-      cs_backend:
-        aliases:
-          - "${DOMAIN}"  
-    ports:
-      - "8080:8080"
-      - "9001:9001"
-    healthcheck:
-      test: wget -S http://127.0.0.1:8080/csview 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " csview" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### WORKFLOW
-[ -n "${sbom_config_map[certscan.workflow]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  workflow:
-    image: "${sbom_config_map[certscan.workflow]}"
-    container_name: workflow
-    restart: always
-    environment:
-      SERVER_HOME: /home/Server
-      #TZ: Asia/Kolkata
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      cs_backend:
-        aliases:
-          - "${DOMAIN}"  
-    ports:
-      - "8030"
-    healthcheck: 
-      test: wget -S http://127.0.0.1:8030/workflow 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " workflow" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### WORKFLOWENGINE
-[ -n "${sbom_config_map[certscan.workflowengine]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  workflowengine:
-    image: "${sbom_config_map[certscan.workflowengine]}"
-    container_name: workflowengine
-    restart: always
-    environment:
-      SERVER_HOME: /home/Server
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "${VOLUMES_FOLDER}/logs:/home/workflowengine/logs:rw"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    ports:
-      - "9081:9081"
-    healthcheck: # /actuator/health
-      test: wget -S http://127.0.0.1:9081/workflowEngine/actuator/health 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20 
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " workflowengine" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### USERMANEGEMENT
-[ -n "${sbom_config_map[certscan.usermanagement]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
-  ####
-  usermanagement:
-    image: "${sbom_config_map[certscan.usermanagement]}"
-    container_name: usermanagement
-    restart: always
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    environment:
-      SERVER_HOME: /home/Server
-      #TZ: Asia/Kolkata
-    networks:
-      - cs_backend
-    ports:
-      - "9047:9047"
-    healthcheck: 
-      test: wget -S http://127.0.0.1:9047/usermanagement 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20 
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " usermanagement" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### ASSIGNMENTSERVICE
-[ -n "${sbom_config_map[certscan.assignmentservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  assignmentservice:
-    image: "${sbom_config_map[certscan.assignmentservice]}"
-    container_name: assignmentservice
-    restart: always
-    environment:
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SERVER_HOME: /home/Server
-      #TZ: Asia/Kolkata
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro" 
-      - "/etc/localtime:/etc/localtime:ro" 
-    ports:
-      - "8099:8099"
-    healthcheck: 
-      test:  wget -S http://127.0.0.1:8099/assignmentservice/actuator/health 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20 
-    networks:
-      - cs_backend
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " assignmentservice" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### EVENT
-[ -n "${sbom_config_map[certscan.event]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  event:
-    image: "${sbom_config_map[certscan.event]}"
-    container_name: event
-    restart: always
-    environment:
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SERVER_HOME: /home/Server
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    ports:
-      - "8060:8060"
-    healthcheck: 
-      test:  wget -S http://127.0.0.1:8060/event 2>&1 >/dev/null | grep -q "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20 
-    depends_on:
-      flyway:
-        condition: service_completed_successfully
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " event" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### IRSERVISE
-[ -n "${sbom_config_map[certscan.irservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  irservice:
-    image: ${sbom_config_map[certscan.irservice]}
-    container_name: irservice
-    restart: always
-    environment:
-      SERVER_HOME: /home/Server
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "${VOLUMES_FOLDER}/logs:/home/irservice/logs:rw"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    ports:                                                                                    
-      - 9099:9099                                                                           
-    healthcheck:                                                                              
-      test: wget -S http://127.0.0.1:9099/irservice 2>&1 >/dev/null | grep -q "200 OK" || exit 1  
-      interval: 20s                                                                           
-      timeout: 5s                                                                             
-      retries: 5
-    depends_on:
-      discovery-service:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " irservice" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-### MANIFESTSERVICE
-[ -n "${sbom_config_map[certscan.manifestservice]-}" ] && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  ####
-  manifestservice:
-    image: ${sbom_config_map[certscan.manifestservice]}
-    container_name: manifest
-    restart: always
-    environment:
-      SERVER_HOME: /home/Server
-      MONGODBHOST: mongodb
-      MONGODBPORT: 27017
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin
-      MONGO_INITDB_DATABASE: certscan
-      #TZ: Asia/Kolkata
-    volumes:
-      - "${VOLUMES_FOLDER}/logs:/home/Server/logs:rw"
-      - "${VOLUMES_FOLDER}/resources/properties:/home/properties"
-      - "${VOLUMES_FOLDER}/resources/Server:/home/Server"
-      - "/etc/timezone:/etc/timezone:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-    networks:
-      - cs_backend
-    ports:
-      - "8989:8989"
-    # healthcheck:
-    #   test: wget -S http://127.0.0.1:8989/manifest 2>&1 >/dev/null | grep -q \"200 OK\" || exit 1
-    #   interval: 20s
-    #   timeout: 5s
-    #   retries: 5
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      discovery-service:
-        condition: service_healthy
-  #### 
-EOF
-msg_success "[$(pad " manifestservice" 20)] added to compose: [ $COMPOSE_FILE ]"
-
-##################################################################################################
-##### CIS ########################################################################################
-##################################################################################################
-
-### CIS SUBSTACK
-[ -z "${sbom_config_map[cis.cis-cert-path]-}" ] && {
-
-   error 'CIS sub-stack could not be deployed, if "cis-api" is specified, "cis-cert-path" will be mandatory'
-
-} || 
-[ -n "${sbom_config_map[cis.cis-ui]-}" ]  &&
-[ -n "${sbom_config_map[cis.cis-api]-}" ] && 
-[ -n "${sbom_config_map[cis.cis-ps]-}" ]  && {
-
-  msg
-  msg '############################################################################################'
-  msg '#### CIS SUB-STACK #########################################################################'
-  msg '############################################################################################'
-  msg
-
-  grep -qi "${IP_ADDRESS} cismgmt.certscan.net" /etc/hosts                                       ||
-  printf '%s' "\n${IP_ADDRESS} cismgmt.certscan.net\n" &>> /etc/hosts 
-  msg_success "[$(pad " cis-ui" 20)] domain name [cismgmt.certscan.net] added to local host file ..." 
-
-  msg && msg_important                                                                                  \
-  "FOR REMOTE ACCESS: Please add entry \n☛ ${BGREEN}( ${IP_ADDRESS} cismgmt.certscan.net )${NOFORMAT}" \
-  "\nto dns server or host file, so [cis ui] can be accessed at:"                                       \
-  "\n☛ ${UCYAN}http://cismgmt.certscan.net:34352${NOFORMAT}" && msg 
-
-  [ ! -f "${WORKING_DIR}/cis_certs.zip" ]                                                        && 
-  dld_s3_obj "$S3_BUCKET" "${sbom_config_map[cis.cis-cert-path]}" "${WORKING_DIR}/cis_certs.zip"
-  msg_success "[$(pad " cis-api" 20)] Downloaded cis api ssl certificates (zip) ..."
-
-  [ ! -d "${VOLUMES_FOLDER}/cis/certs" ] && mkdir -p "${VOLUMES_FOLDER}/cis/certs"               &&
-  busybox unzip "${WORKING_DIR}/cis_certs.zip" -o -d "${VOLUMES_FOLDER}/cis/certs" >             \
-  "$WORKING_DIR/deployment_logs/cis_certs_unzip.log" 2>&1      
-  msg_success "[$(pad " cis-api" 20)] Uncompressed cis api ssl certificates (zip) file ..." 
-
-  grep -qi "${IP_ADDRESS} cis-api.certscan.net" /etc/hosts                                       ||
-  printf '%s' "\n${IP_ADDRESS} cis-api.certscan.net\n" &>> /etc/hosts 
-  msg_success "[$(pad " cis-api" 20)] domain name [cis-api.certscan.net] added to local host file ..." 
-  
-  msg && msg_important                                                                                  \
-  "FOR REMOTE ACCESS: Please add entry \n☛ ${BGREEN}( ${IP_ADDRESS} cis-api.certscan.net )${NOFORMAT}" \
-  "\nto dns server or host file, so [cis api] can be accessed at:"                                      \
-  "\n☛ ${UCYAN}https://cis-api.certscan.net:34351${NOFORMAT}" && msg
-
-  DB_CONN='Server=postgres;Port=5432;User Id=postgres;Password=postgres;Database=cis-api'
-  # shellcheck disable=SC2016
-  CERT_PASSWORD='!@OnDem@ndPa$$$$1234'
-  
-} && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
-  #### CIS SUB-STACK #####################################################################################
-  #####
-  cis-ui:
-    image: ${sbom_config_map[cis.cis-ui]}
-    container_name: cis-ui
-    restart: always
-    environment:
-      - CIS_API_ENDPOINT=https://cis-api.certscan.net:34351
-      - CIS_NOTIFICATION_HUB=https://cis-api.certscan.net:34351/api/notificationhub
-    ports:
-      - "34352:80"
-    networks:
-      cis_backend:
-        aliases:
-          - cismgmt.certscan.net
-    healthcheck:
-      test: wget -O- -S http://127.0.0.1:80 3>&2 2>&1 1>&3 >/dev/null | grep "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      - cis-api
-  ####
-  ####
-  cis-api:
-    image: ${sbom_config_map[cis.cis-api]}
-    container_name: cis-api
-    restart: always
-    volumes:
-      - "${VOLUMES_FOLDER}/cis/certs:/cis/certs"
-      - "${VOLUMES_FOLDER}/cis/archive:/cis/storage:rw"
-      - "${VOLUMES_FOLDER}/cis/logs:/cis/logs:rw"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - App__DataSettings__DataConnectionString=${DB_CONN}
-      - App__SSL__KeyPath=/cis/certs/certscan.net.encrypted.key
-      - App__SSL__KeyPass=${CERT_PASSWORD}
-      - Kestrel__Certificates__Default__Path=/cis/certs/certscan.net.pfx
-      - Kestrel__Certificates__Default__Password=${CERT_PASSWORD}
-      - App__EnableCors=true 
-      - App__AllowedHosts=http://cismgmt.certscan.net:34352
-      - Serilog__MinimumLevel__Default=Debug
-      - Serilog__WriteTo__1__Args__path=/cis/logs/cis-api-std-.log
-      - Serilog__WriteTo__2__Args__path=/cis/logs/cis-api-err-.log
-      - App__EventBus__Uri=amqp://rabbitmq:5672
-      - App__EventBus__UserName=guest
-      - App__EventBus__Password=guest
-      - App__InstallSampleData=true
-      - App__StorageConfig__Type=1
-      - App__StorageConfig__AmazonFsxConfig__SharedFolderNetworkPath=/cis/storage
-      - App__SSL__UseSSL=false
-      - App__SSL__OnlineCert=false
-      - App__SSL__CrtPath=/cis/certs/certscan.net.crt
-      - App__GrpcConfig__CertscanServerEndpoint__Host=http://converter
-      - App__GrpcConfig__CertscanServerEndpoint__Port=7090
-      - App__WebSocketConfig__BaseUrl=http://csview:8088/csview
-      - App__WebSocketConfig__EnableSSL=True
-      - App__WebSocketConfig__UserName=username
-      - App__WebSocketConfig__Password=password
-      - App__AIService__AIEndpoint=http://localhost:1880/api/v1/external/predict
-      - App__AIService__ModelName=Test
-      - Kestrel__Endpoints__http__Url=http://*:34350
-      - Kestrel__Endpoints__https__Url=https://*:34351
-      - Kestrel__Endpoints__grpc__Url=https://*:5003
-    ports:
-      - "34350:34350"
-      - "34351:34351"
-      - "5003:5003"
-    networks:
-      cs_backend:
-      cis_backend:
-        aliases:
-          - cis-api.certscan.net
-    healthcheck:
-      test: wget -O- -S "https://cis-api.certscan.net:34351/swagger/index.html" 3>&2 2>&1 1>&3 >/dev/null | grep "200 OK" || exit 1
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-  ####
-  ####
-  cis-ps-m60-01:
-    image: ${sbom_config_map[cis.cis-ps]}
-    container_name: cis-ps-m60-01
-    restart: always
-    volumes:
-      - "${VOLUMES_FOLDER}/cis/logs:/cis/logs:rw"
-    environment:
-      - AppConfig__ServiceId=cacc3948-2934-4ce0-a8f2-b96d228510ce # <-- CHANGE IT FROM CIS
-      - AppConfig__CisWebApiEndpoints__Prod__Host=https://cis-api.certscan.net
-      - AppConfig__CisWebApiEndpoints__Prod__GrpcPort=5003
-      - ASPNETCORE_ENVIRONMENT=Development
-      - Serilog__MinimumLevel__Default=Debug
-      - Serilog__WriteTo__1__Args__path=/cis/logs/cis-ps-m60-01-std-.log
-      - Serilog__WriteTo__2__Args__path=/cis/logs/cis-ps-m60-01-err-.log
-      - AppConfig__EventBus__Uri=amqp://rabbitmq:5672
-      - AppConfig__EventBus__UserName=guest
-      - AppConfig__EventBus__Password=guest
-    networks:
-      - cs_backend
-      - cis_backend
-    depends_on:
-      cis-api:
-        condition: service_started
-      rabbitmq:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " cis-ui" 20)] added to compose: [ $COMPOSE_FILE ]" &&
-msg_success "[$(pad " cis-api" 20)] added to compose: [ $COMPOSE_FILE ]" &&
-msg_success "[$(pad " cis-ps-m60-01" 20)] added to compose: [ $COMPOSE_FILE ]" 
-
-##################################################################################################
-##### CIS EMULATOR ###############################################################################
-##################################################################################################
-
-### EMU SUB STACK
-[ -z "${sbom_config_map[emulator.emu-scans-path]-}" ] && {
-   error 'EMU sub-stack could not be generated, if "emu-api" is specified, "emu-scans-path" will be mandatory'
-} || 
-[ -n "${sbom_config_map[emulator.emu-ui]-}" ]  &&
-[ -n "${sbom_config_map[emulator.emu-api]-}" ] && {
-
-  msg
-  msg '############################################################################################'
-  msg '#### EMULATOR SUB-STACK ####################################################################'
-  msg '############################################################################################'
-  msg
-  
-  grep -qi "${IP_ADDRESS} emumgmt.certscan.net" /etc/hosts                                       ||
-  printf '%s' "\n${IP_ADDRESS} emumgmt.certscan.net\n" &>> /etc/hosts 
-  msg_success "[$(pad " cis-ps-emu-ui" 20)] domain name [emumgmt.certscan.net] added to local host file ..." 
-
-  msg && msg_important                                                                                  \
-  "FOR REMOTE ACCESS: Please add entry \n☛ ${BGREEN}( ${IP_ADDRESS} emumgmt.certscan.net )${NOFORMAT}" \
-  "\nto dns server or host file, so [emu ui] can be accessed at:"                                       \
-  "\n☛ ${UCYAN}http://emumgmt.certscan.net:35351${NOFORMAT}" && msg
-
-  local SCANS_ZIP_FILE="${WORKING_DIR}/${TENNANT}_scans.zip"                               &&
-  [ ! -f "$SCANS_ZIP_FILE" ]                                                               &&
-  dld_s3_obj "$S3_BUCKET" "${sbom_config_map[emulator.emu-scans-path]}" "$SCANS_ZIP_FILE"
-  msg_success "[$(pad " cis-ps-emu-api" 20)] Downloaded emulator scans demo package (zip) ..."
-
-  local SCANS_CONTAINER="${TENNANT}_scans"                                                  &&
-  local SCANS_FOLDER="${VOLUMES_FOLDER}/emu/storage/${SCANS_CONTAINER}"                     && 
-  [ ! -d "${SCANS_FOLDER}" ] && mkdir -p "${SCANS_FOLDER}"                                  &&
-  busybox unzip "$SCANS_ZIP_FILE" -o -d "$SCANS_FOLDER" >                                   \
-  "$WORKING_DIR/deployment_logs/${SCANS_CONTAINER}_unzip.log" 2>&1      
-  msg_success "[$(pad " cis-ps-emu-api" 20)] Uncompresed emulator scans demo package (zip) into it's volume ..."
-
-  grep -qi "${IP_ADDRESS} emu-api.certscan.net" /etc/hosts                                       ||
-  printf '%s' "\n${IP_ADDRESS} emu-api.certscan.net\n" &>> /etc/hosts 
-  msg_success "[$(pad " cis-ps-emu-api" 20)] domain name [emu-api.certscan.net] added to local host file ..." 
-
-  msg && msg_important                                                                                  \
-  "FOR REMOTE ACCESS: Please add entry \n☛ ${BGREEN}( ${IP_ADDRESS} emu-api.certscan.net )${NOFORMAT}" \
-  "\nto dns server or host file, so [emu api] can be accessed at:"                                      \
-  "\n☛ ${UCYAN}http://emu-api.certscan.net:35350${NOFORMAT}" && msg
-
-} && tee -a "$COMPOSE_FILE" <<EOF > /dev/null &&
-  #### !! THIS IS A GENERATED FILE FROM A TEMPLATE, MANUAL MODIFICATIONS WON'T PERSIST AFTER RE-GENERATION
-  #### CIS SUB-STACK #####################################################################################
-  ####
-  cis-ps-emu-ui:
-    image: ${sbom_config_map[emulator.emu-ui]}
-    container_name: cis-ps-emu-ui
-    restart: always
-    environment:
-      - DEBUG=TRUE
-      - API_URL=http://emu-api.certscan.net:35350
-    ports:
-      - "35351:80"
-    networks:
-      cis_backend:
-        aliases:
-          - emumgmt.certscan.net
-    healthcheck:
-      test: wget -O- -S http://127.0.0.1:80 3>&2 2>&1 1>&3 >/dev/null | grep "200 OK" || exit 1 
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      - cis-ps-emu-api
-  ####
-  ####
-  cis-ps-emu-api:
-    image: ${sbom_config_map[emulator.emu-api]}
-    container_name: cis-ps-emu-api
-    restart: always
-    volumes:
-      - "${VOLUMES_FOLDER}/emu/storage:/app/emu-storage:rw"
-      - "${VOLUMES_FOLDER}/emu/logs:/app/logs:rw"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - Serilog__MinimumLevel__Default=Debug
-      - Serilog__WriteTo__1__Args__path=/app/logs/cis-ps-emu-api-std-.log
-      - App__EventBus__Uri=amqp://rabbitmq:5672
-      - App__EventBus__UserName=guest
-      - App__EventBus__Password=guest
-      - App__AllowedHosts="http://emumgmt.certscan.net:35351,http://${IP_ADDRESS}:35351"
-      - App__CorsAllowOrigins="http://emumgmt.certscan.net:35351,http://${IP_ADDRESS}:35351"
-      - App__StorageConfig__AmazonFsxConfig__SharedFolderNetworkPath=/app/emu-storage
-      - App__StorageConfig__Container=${SCANS_CONTAINER}
-    ports:
-      - "35350:35350"
-    networks:
-      cs_backend:
-      cis_backend:
-        aliases:
-          - emu-api.certscan.net
-    healthcheck:
-      test: wget -O- -S "http://emu-api.certscan.net:35350/index.html" 3>&2 2>&1 1>&3 >/dev/null | grep "200 OK" || exit 1
-      #start_period: 20s
-      interval: 20s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-  ####
-EOF
-msg_success "[$(pad " cis-ps-emu-ui" 20)] added to compose: [ $COMPOSE_FILE ]" &&
-msg_success "[$(pad " cis-ps-emu-api" 20)] added to compose: [ $COMPOSE_FILE ]"
+#endregion
 
 ##################################################################################################
 
@@ -1289,6 +1115,7 @@ msg && msg "DONE!" && msg
   return 0
 
 }
+
 #endregion
 
 composeUp() { 
@@ -1448,12 +1275,12 @@ parse_params() {
   
   [[ "${args[*]}" == *"-g"* ]] || [[ "${args[*]}" == *"--generate-compose"* ]] && {
 
-    unset AWS_ACCESS_KEY_ID && unset AWS_SECRET_ACCESS_KEY                                &&
-    aws ecr get-login-password                                                            \
-      --profile default                                                                   \
-      --region "$(aws configure get region)" | docker login                               \
-        --password-stdin "585953033457.dkr.ecr.$(aws configure get region).amazonaws.com" \
-        --username AWS &> "$WORKING_DIR/deployment_logs/aws_auth.log"                     && 
+    mkdir -p "$WORKING_DIR/deployment_logs" && msg && msg_success "Created stack folder [$WORKING_DIR] ..." 
+    
+    unset AWS_ACCESS_KEY_ID && unset AWS_SECRET_ACCESS_KEY                                                  &&
+    aws ecr get-login-password --profile default --region "$(aws configure get region)" | docker login      \
+        --password-stdin "585953033457.dkr.ecr.$(aws configure get region).amazonaws.com"                   \
+        --username AWS &> "$WORKING_DIR/deployment_logs/aws_auth.log"                                       && 
     msg && msg_success "Docker logged in to aws ecr successfuly"
   
     [[ "${args[*]}" != *"-c"* ]] && [[ "${args[*]}" != *"--config-file"* ]] &&
@@ -1498,103 +1325,58 @@ parse_params "$@"
 
 #####################################################################################################################################
 
-  # tennant=oman # wajajah
-  # cs-version=4.3.3
-  # domain=wajajah.certscan.rop.gov.internal
-  # rel-kit-path=Releases/4.3.3/Certscan Release Kit 4.3.3 Oman_Hotfix_SOL-27093_ July 8th 2024.zip
+  # tennant=oman
+  # cs-version=4.4.0
+  # domain=portal.certscan.net
+  # #surfait.certscan.rop.gov.internal
+  # rel-kit-path=Releases/4.4.0/Certscan Release Kit 4.4.0 Oman - Sep 16th 2024.zip 
+  # #Releases/4.3.5/Certscan Release Kit 4.3.5 Oman- August 12th 2024.zip
   # [third-party]
-  # postgres=postgres:12-alpine
-  # pgweb=sosedoff/pgweb
-  # redis=redis:7.2.4-alpine
-  # rabbitmq=rabbitmq:3.13.0-management-alpine
-  # [certscan]
-  # flyway=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.3.3-release-20240502
-  # csview=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/core:4.3.3-release-20240628-Hotfix
-  # workflow=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowdesginerservice:4.3.3-release-20240502
-  # cchelp=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/cchelp:4.3.3-release-20240502
-  # configserver=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/configservice:4.3.3-release-20240502
-  # assignmentservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/assignmentservice:4.3.3-release-20240502
-  # converter=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/imageprocessor:4.3.3-release-20240502
-  # event=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/eventalarms:4.3.3-release-20240502
-  # workflowengine=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowengine:4.3.3-release-20240502
-  # appconfiguration=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/applicationconfiguration:4.3.3-release-20240502
-  # discoveryservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/discoveryservice:4.3.3-release-20240502
-  # usermanagement=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/usermanagement:4.3.3-release-20240502
-  # certscanjobs=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/certscan-db-jobs:4.3.3-release-20240502
-  # haproxy=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/haproxy:4.3.3-release-20240502
-  # #irservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/irservice:4.3.4-release-20240607
-  # [cis]
-  # #cis-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/api:dev-4.5.1.288
-  # cis-cert-path=cis-4/cis_api_certs_2024.zip
-  # cis-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/ui:dev-4.5.1.273
-  # cis-ps=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/ps:dev-4.5.1.288
-  # [emulator]
-  # #emu-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/api:dev-1.6.0.16
-  # emu-scans-path=cis-emulator/cs-cis-demo.zip
-  # emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
-
-#####################################################################################################################################
-
-  # tennant=oman # surfait
-  # cs-version=4.3.5
-  # domain=surfait.certscan.rop.gov.internal
-  # rel-kit-path=Releases/4.3.5/Certscan Release Kit 4.3.5 Oman- August 12th 2024.zip
-  # [third-party]
-  # redis=redis:7.2.4-alpine
-  # rabbitmq=rabbitmq:3.13.0-management-alpine
-  # postgres=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/postgres:4.3.5-release-20240812
-  # pgweb=sosedoff/pgweb
+  # redis=redis/redis-stack-server:latest 
+  # #redis:7.2.4-alpine
+  # rabbitmq=rabbitmq:3.13.7-management-alpine 
+  # #rabbitmq:3.13.0-management-alpine
+  # postgres=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/postgres:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/postgres:4.3.5-release-20240812
   # mongodb=mongo:latest
-  # haproxy=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/haproxy:4.3.5-release-20240812
+  # haproxy=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/haproxy:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/haproxy:4.3.5-release-20240812
   # [certscan]
-  # flyway=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.3.5-release-20240812
-  # discoveryservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/discoveryservice:4.3.5-release-20240812
-  # configserver=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/configservice:4.3.5-release-20240812
-  # appconfiguration=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/applicationconfiguration:4.3.5-release-20240812
-  # cchelp=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/cchelp:4.3.5-release-20240812
-  # converter=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/imageprocessor:4.3.5-release-20240812
-  # csview=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/core:4.3.5-release-20240812
-  # workflow=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowdesginerservice:4.3.5-release-20240812
-  # workflowengine=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowengine:4.3.5-release-20240812
-  # usermanagement=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/usermanagement:4.3.5-release-20240812
-  # assignmentservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/assignmentservice:4.3.5-release-20240812
-  # event=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/eventalarms:4.3.5-release-20240812
-  # irservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/irservice:4.3.5-release-20240812
-  # manifestservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/manifestservice:4.3.5-release-20240812
+  # flyway=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.3.5-release-20240812
+  # discoveryservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/discoveryservice:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/discoveryservice:4.3.5-release-20240812
+  # cchelp=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/cchelp:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/cchelp:4.3.5-release-20240812
+  # configserver=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/configservice:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/configservice:4.3.5-release-20240812
+  # appconfiguration=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/applicationconfiguration:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/applicationconfiguration:4.3.5-release-20240812
+  # converter=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/imageprocessor:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/imageprocessor:4.3.5-release-20240812
+  # csview=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/core:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/core:4.3.5-release-20240812
+  # workflow=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowdesginerservice:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowdesginerservice:4.3.5-release-20240812
+  # workflowengine=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowengine:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/workflowengine:4.3.5-release-20240812
+  # usermanagement=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/usermanagement:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/usermanagement:4.3.5-release-20240812
+  # assignmentservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/assignmentservice:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/assignmentservice:4.3.5-release-20240812
+  # event=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/eventalarms:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/eventalarms:4.3.5-release-20240812
+  # irservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/irservice:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/irservice:4.3.5-release-20240812
+  # manifestservice=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/manifestservice:4.4.0-release-20240916
+  # #585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/manifestservice:4.3.5-release-20240812
   # [cis]
-  # #cis-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/api:dev-4.5.1.288
+  # cis-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/api:dev-4.5.1.288
   # cis-cert-path=cis-4/cis_api_certs_2024.zip
   # cis-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/ui:dev-4.5.1.273
   # cis-ps=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2global/cis/ps:dev-4.5.1.288
   # [emulator]
-  # #emu-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/api:dev-1.6.0.16
+  # emu-api=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/api:dev-1.6.0.16
   # emu-scans-path=cis-emulator/cs-cis-demo.zip
   # emu-ui=585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cis/emu/ui:prod-0.1.0.2
 
-#####################################################################################################################################
-
-  # # https://www.baeldung.com/linux/bash-hash-table
-  # declare -A DKR_STACK_COMPS=(
-  #   [tennant]='saudi'
-  #   [cs-version]='4_3_4'
-  #   [bom-s3-path]='Releases/4.3.4/Certscan Release Kit 4.3.4 Saudi National Interim - June 7th 2024.zip' 
-  #   [postgres]='postgres:12-alpine' 
-  #   [flyway]='585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/flyway:4.3.4-release-20240607'
-  #   [pgweb]='sosedoff/pgweb'
-  #   [redis]='redis:7.2.4-alpine' 
-  #   [rabbitmq]='rabbitmq:3.13.0-management-alpine'
-  #   [haproxy]='585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/haproxy:4.3.4-release-20240607'
-  #   [discovery-service]='585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/discoveryservice:4.3.4-release-20240607'
-  #   [configserver]='585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/configservice:4.3.4-release-20240607'
-  #   [applicationconfiguration]='585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/applicationconfiguration:4.3.4-release-20240607'
-  #   [cchelp]='585953033457.dkr.ecr.us-east-2.amazonaws.com/s2/cs/cchelp:4.3.4-release-20240607'
-  # )
-
-#####################################################################################################################################
-
-    
-  #     - Kestrel__Certificates__Default__Path=/cis/certs/certscan.pfx                                                          \n\
-  #     - Kestrel__Certificates__Default__Password=$(printf '!@OnDem@ndPa$$$$1234')                                             \n\
-  #     - Kestrel__Endpoints__http__Url=http://*:34350                                                                          \n\
-  #     - Kestrel__Endpoints__https__Url=https://*:34351                                                                        \n\
-  #     - Kestrel__Endpoints__grpc__Url=https://*:5003                                                                          \n\
