@@ -67,15 +67,15 @@ sed 's|\\$\ |\\n\\$\ |' -i /root/.bashrc
 echo -e "$COOL root's prompt changed"
 
 grep -qi 'alias docker' /home/"${SUDO_USER}"/.bashrc ||
-echo 'alias docker="sudo docker"' > /home/"${SUDO_USER}"/.bashrc && 
+echo 'alias docker="sudo docker"' >> /home/"${SUDO_USER}"/.bashrc && 
 echo -e "$COOL [alias docker] added"
 
 grep -qi 'alias lazydocker' /home/"${SUDO_USER}"/.bashrc ||
-echo 'alias lazydocker="sudo lazydocker"' > /home/"${SUDO_USER}"/.bashrc && 
+echo 'alias lazydocker="sudo lazydocker"' >> /home/"${SUDO_USER}"/.bashrc && 
 echo -e "$COOL [alias lazydocker] added"
 
 grep -qi 'alias deploy-certscan-docker' /home/"${SUDO_USER}"/.bashrc ||
-echo 'alias deploy-certscan-docker="sudo deploy-certscan-docker.sh"' > /home/"${SUDO_USER}"/.bashrc && 
+echo 'alias deploy-certscan-docker="sudo deploy-certscan-docker.sh"' >> /home/"${SUDO_USER}"/.bashrc && 
 echo -e "$COOL [alias deploy-certscan-docker] added"
 
 #endregion
